@@ -559,7 +559,13 @@ window.addEventListener('keydown', (e) => {
     case 'Enter':
       if (selectedId) actions.openThread()
       break
+    case 't':
+    case 'T':
+      if (selectedId) actions.copyCliCommand()
+      break
     case 'a':
+      if (selectedId) actions.archiveThread()
+      break
     case 'A':
       if (selectedId) actions.archiveThread()
       break

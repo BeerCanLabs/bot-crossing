@@ -487,7 +487,7 @@ body {
   position: absolute;
   top: 0;
   left: 0;
-  width: 284px;
+  width: 304px;
   padding: 11px;
   display: none;
   flex-direction: column;
@@ -631,6 +631,59 @@ body {
   border-radius: 3px;
   background: var(--green);
   transition: width 400ms ease;
+}
+
+.thread-pop .cli-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  color: #7ee787;
+  cursor: pointer;
+  overflow: hidden;
+  transition: background 140ms ease, border-color 140ms ease;
+  user-select: none;
+}
+
+.thread-pop .cli-pill:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--line-strong);
+}
+
+.thread-pop .cli-pill .cli-prompt {
+  color: var(--muted);
+  flex: none;
+}
+
+.thread-pop .cli-pill .cli-code {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+.thread-pop .cli-pill .cli-copy-icon {
+  flex: none;
+  opacity: 0.6;
+  display: flex;
+  align-items: center;
+}
+
+.thread-pop .cli-pill:hover .cli-copy-icon {
+  opacity: 1;
+}
+
+.thread-pop .cli-pill .cli-copy-icon svg {
+  width: 12px;
+  height: 12px;
 }
 
 /* ── the sidebar: brand, counts, repos, and the repo you drilled into ─────────────── */

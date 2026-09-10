@@ -362,6 +362,7 @@ export class Hud {
     on('#btn-time', 'click', () => this.actions.cycleTime?.())
     on('#btn-open', 'click', () => this.actions.openThread?.())
     on('#btn-copy-cli', 'click', () => this.actions.copyCliCommand?.())
+    on('.thread-pop .cli-pill', 'click', () => this.actions.copyCliCommand?.())
     on('#btn-viewed', 'click', () => this.actions.markViewed?.())
     on('#btn-archive', 'click', () => this.actions.archiveThread?.())
     on('#btn-deselect', 'click', () => this.actions.select?.(null))
@@ -611,7 +612,15 @@ export class Hud {
     if (cliBtn) {
       cliBtn.hidden = !thread.cliCommand
       if (thread.cliCommand) {
-        cliBtn.title = `Copy CLI resume command: ${thread.cliCommand}`
+        cliBtn.title = `Copy CLI resume command: ${thread.cliCommand} (T)`
+      }
+    }
+    const cliPill = this.$('.thread-pop .cli-pill')
+    if (cliPill) {
+      cliPill.hidden = !thread.cliCommand
+      if (thread.cliCommand) {
+        this.$('.thread-pop .cli-code').textContent = thread.cliCommand
+        cliPill.title = `Click or press T to copy: ${thread.cliCommand}`
       }
     }
     // Only offered when there is something to dismiss. A third button on every card would
@@ -984,9 +993,14 @@ const TEMPLATE = `
     <button class="btn icon ghost" id="btn-deselect" title="Deselect (Esc)">${ICON.close}</button>
   </div>
   <div class="progress"><i></i></div>
+  <div class="cli-pill" title="Click to copy CLI resume command (T)">
+    <span class="cli-prompt">$</span>
+    <code class="cli-code"></code>
+    <span class="cli-copy-icon">${ICON.copy}</span>
+  </div>
   <div class="pair">
     <button class="btn primary" id="btn-open" title="Open this thread in the harness it came from (Enter)">${ICON.open} Open</button>
-    <button class="btn" id="btn-copy-cli" title="Copy CLI resume command to clipboard">${ICON.terminal} CLI</button>
+    <button class="btn" id="btn-copy-cli" title="Copy CLI resume command to clipboard (T)">${ICON.terminal} CLI</button>
     <button class="btn" id="btn-viewed" title="Stop this thread asking for you until it moves on again (V)">${ICON.eye} Viewed</button>
     <button class="btn" id="btn-archive" title="Archive — this astronaut walks back to the ship (A)">${ICON.archive} Archive</button>
   </div>
@@ -1015,6 +1029,7 @@ const TEMPLATE = `
       <div>
         <div class="k"><span>Next needing you</span><kbd>N</kbd></div>
         <div class="k"><span>Open thread</span><kbd>Enter</kbd></div>
+        <div class="k"><span>Copy CLI command</span><kbd>T</kbd></div>
         <div class="k"><span>Mark viewed</span><kbd>V</kbd></div>
         <div class="k"><span>Archive</span><kbd>A</kbd></div>
         <div class="k"><span>New conversation</span><kbd>C</kbd></div>
