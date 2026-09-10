@@ -341,6 +341,41 @@ async function scanThreads() {
     },
   })
 
+  // Always include Engineering functional tile with Switch
+  if (!threads.some((t) => t.project === FUNCTIONAL_DOMAINS.ENGINEERING)) {
+    threads.push({
+      id: ID('switch-engineering-base'),
+      title: 'Switch — Autonomous Software Engineer',
+      preview: 'Autonomous software engineering, lab apps, games & experiments',
+      project: FUNCTIONAL_DOMAINS.ENGINEERING,
+      projectPath: 'https://github.com/BeerCanLabs',
+      cliCommand: 'python3 /Users/skippy/repos/skippy-matrix/scripts/hermes_mcp_client.py ask switch "status"',
+      worktree: '',
+      model: 'claude-opus-4-8',
+      effort: '',
+      cwd: 'https://github.com/BeerCanLabs',
+      gitBranch: 'main',
+      createdAt: now - 86400000,
+      lastActivityAt: now - 3600000,
+      lastFocusedAt: 0,
+      running: false,
+      unread: false,
+      hasError: false,
+      starred: true,
+      routine: '',
+      prState: '',
+      archived: false,
+      sizeBytes: 8192,
+      source: 'gcp-submind',
+      canOpen: true,
+      ref: {
+        agent: 'switch',
+        repo: 'BeerCanLabs',
+        url: 'https://github.com/BeerCanLabs',
+      },
+    })
+  }
+
   return threads
 }
 
