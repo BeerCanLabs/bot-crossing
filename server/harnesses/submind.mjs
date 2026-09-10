@@ -280,6 +280,75 @@ async function newSession(dir) {
   }
 }
 
+const AGENT_SERVICES = {
+  switch: 'https://sm-switch-382872241265.us-central1.run.app',
+  higgins: 'https://sm-higgins-382872241265.us-central1.run.app',
+  donna: 'https://sm-donna-382872241265.us-central1.run.app',
+  castle: 'https://sm-castle-382872241265.us-central1.run.app',
+  geordi: 'https://sm-geordi-382872241265.us-central1.run.app',
+  archie: 'https://sm-archie-382872241265.us-central1.run.app',
+  draftsman: 'https://ev-draftsman-382872241265.us-central1.run.app',
+  'mcp-gateway': 'https://sm-mcp-gateway-382872241265.us-central1.run.app',
+}
+
+async function getGcpIdToken(audience) {
+  try {
+    const url = `http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=${encodeURIComponent(audience)}`
+    const res = await fetch(url, { headers: { 'Metadata-Flavor': 'Google' }, signal: AbortSignal.timeout(2000) })
+    if (res.ok) return await res.text()
+  } catch {
+    // metadata server not reachable (e.g. running locally)
+  }
+  return null
+}
+
+export async function chatWithSubmindAgent(agentName, text, sessionId = 'colony-session') {
+  const normName = (agentName || '').toLowerCase().replace(/^sm-/, '').replace(/^submind:/, '')
+  const serviceUrl = AGENT_SERVICES[normName]
+  if (!serviceUrl) {
+    return { ok: false, error: `Unknown Submind agent: ${agentName}` }
+  }
+
+  const headers = { 'Content-Type': 'application/json' }
+  const idToken = await getGcpIdToken(serviceUrl)
+  if (idToken) {
+    headers['Authorization'] = `Bearer ${idToken.trim()}`
+  } else {
+    const token = process.env.GATEWAY_AUTH_TOKEN || '3fb7b6ca289945df8ee0fc945bdf9b5b'
+    headers['Authorization'] = `Bearer ${token}`
+  }
+
+  try {
+    const res = await fetch(`${serviceUrl}/v1/chat`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        text,
+        session_id: sessionId || 'colony-session',
+        stream: false,
+      }),
+      signal: AbortSignal.timeout(60000),
+    })
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '')
+      return { ok: false, error: `Agent ${normName} returned HTTP ${res.status}: ${errText.slice(0, 200)}` }
+    }
+
+    const data = await res.json()
+    const replyText = data.text || data.reply || (data.t ? data.t : 'Message received')
+    return {
+      ok: true,
+      agent: normName,
+      text: replyText,
+      id: data.id || Date.now().toString(),
+      timestamp: Date.now(),
+    }
+  } catch (err) {
+    return { ok: false, error: `Failed to contact ${normName}: ${err.message}` }
+  }
+}
+
 export default {
   id: 'submind',
   name: "Skippy's Submind",
@@ -287,4 +356,5 @@ export default {
   scanThreads,
   openThread,
   newSession,
+  chatWithSubmindAgent,
 }

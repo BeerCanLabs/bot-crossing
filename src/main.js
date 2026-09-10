@@ -16,6 +16,7 @@ import {
   openThread,
   newSession,
   revealFolder,
+  sendChatMessage,
 } from './game/api.js'
 import { hideProject, hiddenCatalog, unhideProject } from './game/hidden-projects.js'
 
@@ -223,6 +224,21 @@ const actions = {
       const copied = copyFallback(folder)
       hud.toast(copied ? 'Path copied' : 'Could not reach the clipboard', copied ? '' : 'err')
     }
+  },
+
+  openChat: () => {
+    const thread = threads.find((t) => t.id === selectedId)
+    if (!thread) return
+    const agent = colony.astronauts.byThread.get(thread.id)
+    hud.openChat(thread, agent)
+  },
+
+  sendChat: async (agent, message, sessionId) => {
+    return await sendChatMessage(agent, message, sessionId)
+  },
+
+  celebrate: (threadId) => {
+    colony.astronauts.celebrate(threadId)
   },
 
   openThread: async () => {
@@ -575,7 +591,8 @@ window.addEventListener('keydown', (e) => {
       break
     case 'c':
     case 'C':
-      if (selectedProject) actions.newConversation()
+      if (selectedId) actions.openChat()
+      else if (selectedProject) actions.newConversation()
       break
     case '?':
       hud.toggleHelp()
@@ -605,9 +622,10 @@ window.addEventListener('keydown', (e) => {
     case '_':
       rig.desiredDistance = Math.min(150, rig.desiredDistance * 1.22)
       break
-    // One step at a time, outward: the thread, then the zone it belongs to.
+    // One step at a time, outward: the chat, help, then the thread, then the zone it belongs to.
     case 'Escape':
-      if (document.querySelector('.help.open')) hud.toggleHelp(false)
+      if (hud.isChatOpen) hud.closeChat()
+      else if (document.querySelector('.help.open')) hud.toggleHelp(false)
       else if (selectedId) select(null, {})
       else if (selectedProject) actions.closeProject()
       break

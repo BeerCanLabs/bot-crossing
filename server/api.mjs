@@ -11,6 +11,7 @@ import {
   openThread as harnessOpenThread,
   scanThreads,
 } from './scan.mjs'
+import { chatWithSubmindAgent } from './harnesses/submind.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = process.env.BOT_CROSSING_DATA || path.join(here, '..', 'data')
@@ -432,6 +433,16 @@ export async function apiMiddleware(req, res, next) {
       const { harness, ref } = await readJsonBody(req)
       const shown = await present(await harnessOpenThread(harness, ref))
       return send(res, shown.ok ? 200 : 400, shown)
+    }
+
+    if (url.pathname === '/api/chat' && req.method === 'POST') {
+      const { agent, message, sessionId, threadId } = await readJsonBody(req)
+      const targetAgent = agent || (threadId ? String(threadId).replace(/^submind:/, '') : '')
+      if (!targetAgent || !message) {
+        return send(res, 400, { ok: false, error: 'Agent name and message are required' })
+      }
+      const reply = await chatWithSubmindAgent(targetAgent, message, sessionId)
+      return send(res, reply.ok ? 200 : 500, reply)
     }
 
     if ((url.pathname === '/api/new-session' || url.pathname === '/api/reveal') && req.method === 'POST') {

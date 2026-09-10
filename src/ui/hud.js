@@ -45,6 +45,9 @@ const ICON = {
   locate: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7.6"/><path d="M12 1.8v2.6M12 19.6v2.6M1.8 12h2.6M19.6 12h2.6"/></svg>`,
   orbit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="4"/><ellipse cx="12" cy="12" rx="10.2" ry="4.6" transform="rotate(-24 12 12)"/><circle cx="21" cy="8.2" r="1.5" fill="currentColor" stroke="none"/></svg>`,
   terminal: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`,
+  chat: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+  send: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`,
+  trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
 }
 
 const STAT_DEFS = [
@@ -62,6 +65,11 @@ export class Hud {
     this.visible = true
     this._last = {}
     this.hiddenOpen = false
+    this.isChatOpen = false
+    this.chatThread = null
+    this.chatAgent = null
+    this.chatAgentName = null
+    this.isSending = false
 
     this.el = document.createElement('div')
     this.el.className = 'hud'
@@ -360,6 +368,12 @@ export class Hud {
     on('#btn-orbit', 'click', () => this.setOrbit(this.actions.toggleOrbit?.()))
     on('#btn-planet', 'click', () => this.actions.cyclePlanet?.())
     on('#btn-time', 'click', () => this.actions.cycleTime?.())
+    on('#btn-chat', 'click', () => {
+      if (this.selected?.thread) this.openChat(this.selected.thread, this.selected.agent)
+    })
+    on('#btn-chat-close', 'click', () => this.closeChat())
+    on('#btn-chat-clear', 'click', () => this.clearChatHistory())
+    on('#btn-chat-send', 'click', () => this.sendCurrentChatMessage())
     on('#btn-open', 'click', () => this.actions.openThread?.())
     on('#btn-copy-cli', 'click', () => this.actions.copyCliCommand?.())
     on('.thread-pop .cli-pill', 'click', () => this.actions.copyCliCommand?.())
@@ -378,6 +392,30 @@ export class Hud {
     })
     this.$('.help .sheet').addEventListener('click', (e) => e.stopPropagation())
     on('#btn-help-close', 'click', () => this.toggleHelp(false))
+
+    const chatInput = this.$('#chat-input')
+    if (chatInput) {
+      chatInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault()
+          this.sendCurrentChatMessage()
+        }
+      })
+      chatInput.addEventListener('input', () => {
+        chatInput.style.height = 'auto'
+        chatInput.style.height = Math.min(120, chatInput.scrollHeight) + 'px'
+      })
+    }
+
+    this.el.querySelectorAll('.chat-chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const msg = chip.dataset.msg
+        if (msg && chatInput) {
+          chatInput.value = msg
+          this.sendCurrentChatMessage()
+        }
+      })
+    })
 
     this.settings.onChange(() => this.syncSettings())
   }
@@ -801,6 +839,162 @@ export class Hud {
     return this.visible
   }
 
+  openChat(thread, agent) {
+    if (!thread) return
+    this.chatThread = thread
+    this.chatAgent = agent
+    this.isChatOpen = true
+
+    const drawer = this.$('#chat-drawer')
+    if (!drawer) return
+    drawer.style.display = 'flex'
+
+    const agentName = (thread.ref?.agent || thread.id.replace(/^submind:/, '').replace(/^grok:/, '').replace(/^antigravity:/, '')).toLowerCase()
+    this.chatAgentName = agentName
+
+    const title = thread.title?.split('—')[0]?.trim() || agentName.toUpperCase()
+    this.$('.chat-name').textContent = title
+    this.$('.chat-role').textContent = thread.preview || thread.project || 'Autonomous Agent'
+
+    const taskEl = this.$('#chat-task')
+    if (taskEl) {
+      if (thread.running || thread.title) {
+        taskEl.style.display = 'flex'
+        taskEl.innerHTML = `<span class="task-icon">⚒</span> <span class="task-text">${escapeHtml(thread.title || thread.project)}</span>`
+      } else {
+        taskEl.style.display = 'none'
+      }
+    }
+
+    // Avatar canvas in chat drawer
+    const cvs = this.$('.chat-avatar canvas')
+    if (cvs && this.avatarTmp) {
+      cvs.width = 108
+      cvs.height = 108
+      const cc = cvs.getContext('2d')
+      cc.clearRect(0, 0, 108, 108)
+      cc.drawImage(this.avatarTmp, 0, 0)
+    }
+
+    this.renderChatMessages()
+
+    const input = this.$('#chat-input')
+    if (input) {
+      input.placeholder = `Talk to ${title}...`
+      setTimeout(() => input.focus(), 60)
+    }
+  }
+
+  closeChat() {
+    this.isChatOpen = false
+    const drawer = this.$('#chat-drawer')
+    if (drawer) drawer.style.display = 'none'
+  }
+
+  getChatStorageKey() {
+    return `colony_chat_${this.chatAgentName || 'default'}`
+  }
+
+  getChatHistory() {
+    try {
+      const key = this.getChatStorageKey()
+      const raw = localStorage.getItem(key)
+      if (raw) return JSON.parse(raw)
+    } catch {}
+    const name = (this.chatAgentName || 'agent').toUpperCase()
+    return [
+      {
+        role: 'agent',
+        text: `Hello Dale! ${name} here. How can I help with ${this.chatThread?.project || 'our work'}?`,
+        time: Date.now(),
+      },
+    ]
+  }
+
+  saveChatHistory(history) {
+    try {
+      localStorage.setItem(this.getChatStorageKey(), JSON.stringify(history.slice(-40)))
+    } catch {}
+  }
+
+  clearChatHistory() {
+    try {
+      localStorage.removeItem(this.getChatStorageKey())
+    } catch {}
+    this.renderChatMessages()
+    this.toast('Chat history cleared')
+  }
+
+  renderChatMessages() {
+    const list = this.$('#chat-messages')
+    if (!list) return
+    const history = this.getChatHistory()
+    list.innerHTML = history
+      .map(
+        (m) => `
+      <div class="chat-msg ${m.role}">
+        <div class="chat-bubble">
+          <div class="chat-text">${escapeHtml(m.text)}</div>
+          <div class="chat-time">${ago(m.time)}</div>
+        </div>
+      </div>
+    `
+      )
+      .join('')
+    list.scrollTop = list.scrollHeight
+  }
+
+  async sendCurrentChatMessage() {
+    const input = this.$('#chat-input')
+    if (!input || this.isSending) return
+    const text = input.value.trim()
+    if (!text) return
+
+    input.value = ''
+    input.style.height = 'auto'
+
+    const history = this.getChatHistory()
+    history.push({ role: 'user', text, time: Date.now() })
+    this.saveChatHistory(history)
+    this.renderChatMessages()
+
+    const list = this.$('#chat-messages')
+    const typingEl = document.createElement('div')
+    typingEl.className = 'chat-msg agent typing-msg'
+    typingEl.innerHTML = `
+      <div class="chat-bubble typing">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span class="typing-label">${this.chatAgentName || 'Agent'} is thinking...</span>
+      </div>
+    `
+    list.appendChild(typingEl)
+    list.scrollTop = list.scrollHeight
+
+    this.isSending = true
+    try {
+      const res = await this.actions.sendChat?.(this.chatAgentName, text, 'colony-' + this.chatAgentName)
+      typingEl.remove()
+      if (res?.ok && res.text) {
+        history.push({ role: 'agent', text: res.text, time: Date.now() })
+        this.saveChatHistory(history)
+        this.renderChatMessages()
+        if (this.chatThread?.id) {
+          this.actions.celebrate?.(this.chatThread.id)
+        }
+      } else {
+        throw new Error(res?.error || 'No response from agent')
+      }
+    } catch (err) {
+      typingEl.remove()
+      history.push({ role: 'error', text: `Failed to contact agent: ${err.message}`, time: Date.now() })
+      this.saveChatHistory(history)
+      this.renderChatMessages()
+    } finally {
+      this.isSending = false
+      if (input) input.focus()
+    }
+  }
+
   removeBoot() {
     const boot = document.querySelector('.boot')
     if (!boot) return
@@ -999,10 +1193,42 @@ const TEMPLATE = `
     <span class="cli-copy-icon">${ICON.copy}</span>
   </div>
   <div class="pair">
-    <button class="btn primary" id="btn-open" title="Open this thread in the harness it came from (Enter)">${ICON.open} Open</button>
+    <button class="btn primary" id="btn-chat" title="Engage and chat with this agent in real time (C)">${ICON.chat} Chat</button>
+    <button class="btn" id="btn-open" title="Open this thread in the harness it came from (Enter)">${ICON.open} Open</button>
     <button class="btn" id="btn-copy-cli" title="Copy CLI resume command to clipboard (T)">${ICON.terminal} CLI</button>
     <button class="btn" id="btn-viewed" title="Stop this thread asking for you until it moves on again (V)">${ICON.eye} Viewed</button>
     <button class="btn" id="btn-archive" title="Archive — this astronaut walks back to the ship (A)">${ICON.archive} Archive</button>
+  </div>
+</div>
+
+<div class="chat-drawer panel" id="chat-drawer" style="display: none;">
+  <div class="chat-head">
+    <div class="chat-agent-info">
+      <div class="chat-avatar"><canvas></canvas></div>
+      <div class="chat-meta">
+        <div class="chat-name"></div>
+        <div class="chat-role"></div>
+      </div>
+    </div>
+    <div class="chat-actions">
+      <button class="btn icon ghost" id="btn-chat-clear" title="Clear chat history">${ICON.trash}</button>
+      <button class="btn icon ghost" id="btn-chat-close" title="Close chat (Esc)">${ICON.close}</button>
+    </div>
+  </div>
+
+  <div class="chat-task" id="chat-task" style="display: none;"></div>
+
+  <div class="chat-messages" id="chat-messages"></div>
+
+  <div class="chat-suggestions" id="chat-suggestions">
+    <button class="chat-chip" data-msg="Status update on your current task?">Status update</button>
+    <button class="chat-chip" data-msg="What are you working on right now?">What are you working on?</button>
+    <button class="chat-chip" data-msg="Are there any blockers or questions?">Any blockers?</button>
+  </div>
+
+  <div class="chat-input-box">
+    <textarea id="chat-input" placeholder="Message agent..." rows="1"></textarea>
+    <button class="btn primary icon" id="btn-chat-send" title="Send message (Enter)">${ICON.send}</button>
   </div>
 </div>
 

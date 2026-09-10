@@ -92,3 +92,7 @@ export const openThread = (thread) => post('/api/open', { harness: thread.harnes
 export const newSession = (folder, harness) => post('/api/new-session', { folder, harness })
 
 export const revealFolder = (folder) => post('/api/reveal', { folder })
+
+/** Talk directly to an agent (Submind fleet, etc.) */
+export const sendChatMessage = (agent, message, sessionId) =>
+  post('/api/chat', { agent, message, sessionId })
