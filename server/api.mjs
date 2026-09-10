@@ -292,6 +292,13 @@ for (const addrs of Object.values(os.networkInterfaces())) {
   }
 }
 
+if (process.env.ALLOWED_HOSTS) {
+  for (const h of process.env.ALLOWED_HOSTS.split(',')) {
+    const trimmed = h.trim()
+    if (trimmed) LOCAL_HOSTS.add(trimmed)
+  }
+}
+
 /** Hostname out of a `Host:` or `Origin:` value, with the port and any brackets stripped. */
 function hostnameOf(value) {
   if (!value) return ''
@@ -321,10 +328,14 @@ function hostnameOf(value) {
  * POST is rejected; pass `-H 'Origin: http://localhost:5274'` if you are scripting this.
  */
 function isLocalRequest(req) {
-  if (!LOCAL_HOSTS.has(hostnameOf(req.headers.host))) return false
+  const host = hostnameOf(req.headers.host)
+  if (!LOCAL_HOSTS.has(host) && !host.endsWith('.run.app')) return false
 
   const origin = req.headers.origin
-  if (origin && origin !== 'null') return LOCAL_HOSTS.has(hostnameOf(origin))
+  if (origin && origin !== 'null') {
+    const originHost = hostnameOf(origin)
+    return LOCAL_HOSTS.has(originHost) || originHost.endsWith('.run.app')
+  }
   return req.method === 'GET' || req.method === 'HEAD'
 }
 

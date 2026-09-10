@@ -40,6 +40,7 @@
     "test": "node --test \"test/**/*.test.mjs\""
   },
   "dependencies": {
+    "@google-cloud/storage": "^8.1.0",
     "@mdi/js": "^7.4.47",
     "three": "^0.185.0"
   },
