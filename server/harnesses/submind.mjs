@@ -84,6 +84,13 @@ const AGENT_PROFILES = {
     repo: 'BeerCanLabs/skippy-matrix',
     model: 'gateway',
   },
+  'alc-support': {
+    title: 'ALC Support — Church Webmaster',
+    role: 'Website updates, liturgical accuracy & issue resolution for ALC Kellogg',
+    domain: FUNCTIONAL_DOMAINS.WEB_CLIENTS,
+    repo: 'dsackr/american-lutheran-church-kellogg',
+    model: 'claude-sonnet-5',
+  },
 }
 
 const REPO_DOMAINS = {
@@ -98,6 +105,7 @@ const REPO_DOMAINS = {
   'BeerCanLabs/SM-switch': FUNCTIONAL_DOMAINS.ENGINEERING,
   'BeerCanLabs/HexSplore': FUNCTIONAL_DOMAINS.ENGINEERING,
   'BeerCanLabs/ember-orchard-clicker': FUNCTIONAL_DOMAINS.ENGINEERING,
+  'dsackr/american-lutheran-church-kellogg': FUNCTIONAL_DOMAINS.WEB_CLIENTS,
 }
 
 // Window of time an agent's memory sync counts as "actively working now"
@@ -127,6 +135,7 @@ async function fetchActiveTasks() {
     'BeerCanLabs/SM-donna',
     'BeerCanLabs/SM-castle',
     'BeerCanLabs/SM-geordi',
+    'dsackr/american-lutheran-church-kellogg',
   ]
 
   const tasksByAgent = new Map()
@@ -151,7 +160,8 @@ async function fetchActiveTasks() {
         const text = `${issue.title} ${issue.body || ''}`.toLowerCase()
         let targetAgent = ''
 
-        if (text.includes('switch') || text.includes('sm-switch')) targetAgent = 'switch'
+        if (repo === 'dsackr/american-lutheran-church-kellogg') targetAgent = 'alc-support'
+        else if (text.includes('switch') || text.includes('sm-switch')) targetAgent = 'switch'
         else if (text.includes('higgins') || text.includes('sm-higgins')) targetAgent = 'higgins'
         else if (text.includes('donna') || text.includes('sm-donna')) targetAgent = 'donna'
         else if (text.includes('archie') || text.includes('sm-archie')) targetAgent = 'archie'
@@ -203,6 +213,13 @@ async function scanThreads() {
     buckets = allBuckets.filter(
       (b) => b.name.startsWith(`${PROJECT_ID}-`) && b.name.endsWith('-memory')
     )
+    // Also include alc-support bucket from alc-kellogg-production if accessible
+    try {
+      const [alcBucket] = await storage.bucket('alc-kellogg-production-alc-support-memory').get()
+      if (alcBucket) buckets.push(alcBucket)
+    } catch {
+      // ignore
+    }
   } catch (err) {
     console.warn('[submind] Failed to list GCS buckets:', err?.message || err)
     return []
@@ -213,10 +230,13 @@ async function scanThreads() {
   const threads = []
 
   for (const bucket of buckets) {
-    const rawName = bucket.name
+    let rawName = bucket.name
       .replace(`${PROJECT_ID}-`, '')
       .replace('-memory', '')
       .replace(/^sm-|^ev-/, '')
+    if (bucket.name.includes('alc-support')) {
+      rawName = 'alc-support'
+    }
 
     const profile = AGENT_PROFILES[rawName] || {
       title: `${rawName.toUpperCase()} — Submind Agent`,
