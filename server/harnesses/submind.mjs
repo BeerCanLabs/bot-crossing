@@ -309,13 +309,14 @@ export async function chatWithSubmindAgent(agentName, text, sessionId = 'colony-
     return { ok: false, error: `Unknown Submind agent: ${agentName}` }
   }
 
-  const headers = { 'Content-Type': 'application/json' }
+  const token = process.env.GATEWAY_AUTH_TOKEN || '3fb7b6ca289945df8ee0fc945bdf9b5b'
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+  }
   const idToken = await getGcpIdToken(serviceUrl)
   if (idToken) {
-    headers['Authorization'] = `Bearer ${idToken.trim()}`
-  } else {
-    const token = process.env.GATEWAY_AUTH_TOKEN || '3fb7b6ca289945df8ee0fc945bdf9b5b'
-    headers['Authorization'] = `Bearer ${token}`
+    headers['X-Serverless-Authorization'] = `Bearer ${idToken.trim()}`
   }
 
   try {
