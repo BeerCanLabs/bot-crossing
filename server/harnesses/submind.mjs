@@ -328,7 +328,7 @@ export async function chatWithSubmindAgent(agentName, text, sessionId = 'colony-
         session_id: sessionId || 'colony-session',
         stream: false,
       }),
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(300000),
     })
 
     if (!res.ok) {
