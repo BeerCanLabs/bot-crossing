@@ -16,56 +16,88 @@ import { Storage } from '@google-cloud/storage'
 const PROJECT_ID = process.env.GCP_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT || 'submind-matrix'
 const ID = (agent) => `submind:${agent}`
 
-// Human-readable titles and role definitions for each Submind astronaut
+// Functional domains (hex tiles in The Colony)
+export const FUNCTIONAL_DOMAINS = {
+  EXECUTIVE_SUITE: 'Executive Suite',
+  AGENT_FACTORY: 'Agent Factory',
+  ENGINEERING: 'Engineering',
+  WEB_CLIENTS: 'Web Clients',
+  INFRASTRUCTURE: 'Infrastructure',
+  REAL_ESTATE: 'Real Estate',
+}
+
+// Human-readable titles, roles, and functional domains for each Submind agent
 const AGENT_PROFILES = {
-  higgins: {
-    title: 'Higgins — Estate & Executive Manager',
-    role: 'Executive operations, calendars & Closing Climb real estate pipeline',
-    repo: 'BeerCanLabs/SM-higgins',
-    model: 'grok-4',
-  },
   donna: {
-    title: 'Donna — Chief Operating Officer',
-    role: 'COO, high-level coordination, proactive assistance & executive comms',
+    title: 'Donna — Personal Assistant',
+    role: 'Personal & business life operations, calendar management & executive coordination',
+    domain: FUNCTIONAL_DOMAINS.EXECUTIVE_SUITE,
     repo: 'BeerCanLabs/SM-donna',
     model: 'gemini-3.5-flash',
   },
-  switch: {
-    title: 'Switch — Code & Automation Specialist',
-    role: 'Autonomous refactoring, script execution & system automation',
-    repo: 'BeerCanLabs/SM-switch',
-    model: 'claude-3-5-sonnet',
-  },
   castle: {
-    title: 'Castle — Security & Defense Officer',
-    role: 'Security policy audits, IAM inspection & secret boundary enforcement',
+    title: 'Castle — Content Author & Voice',
+    role: 'Thought leadership, Dale voice profile, blog authoring & reflections',
+    domain: FUNCTIONAL_DOMAINS.EXECUTIVE_SUITE,
     repo: 'BeerCanLabs/SM-castle',
-    model: 'claude-3-5-sonnet',
+    model: 'claude-opus-4-8',
   },
   archie: {
-    title: 'Archie — Issue & GitHub Operations',
-    role: 'Multi-repo issue triage, backlog coordination & PR review management',
+    title: 'Archie — Head of Engineering',
+    role: 'Agent Factory architecture, platform IaC & backlog coordination',
+    domain: FUNCTIONAL_DOMAINS.AGENT_FACTORY,
     repo: 'BeerCanLabs/SM-archie',
-    model: 'claude-3-5-sonnet',
-  },
-  geordi: {
-    title: 'Geordi — Infrastructure & SRE',
-    role: 'GCP Cloud Run health, Litestream replication & cloud reliability',
-    repo: 'BeerCanLabs/SM-geordi',
-    model: 'gemini-3.5-flash',
+    model: 'claude-opus-4-8',
   },
   draftsman: {
     title: 'Draftsman — System Architect',
-    role: 'C4 diagram generation, architectural specs & catalog metadata',
+    role: 'Agent blueprints, architectural standards & catalog metadata',
+    domain: FUNCTIONAL_DOMAINS.AGENT_FACTORY,
     repo: 'BeerCanLabs/ev-draftsman',
-    model: 'claude-3-5-sonnet',
+    model: 'claude-opus-4-8',
+  },
+  switch: {
+    title: 'Switch — Autonomous Software Engineer',
+    role: 'Autonomous software engineering, lab apps, games & experiments',
+    domain: FUNCTIONAL_DOMAINS.ENGINEERING,
+    repo: 'BeerCanLabs/SM-switch',
+    model: 'claude-opus-4-8',
+  },
+  geordi: {
+    title: 'Geordi — Infrastructure & SRE',
+    role: 'GCP Cloud Run platform, networking, Litestream replication & reliability',
+    domain: FUNCTIONAL_DOMAINS.INFRASTRUCTURE,
+    repo: 'BeerCanLabs/SM-geordi',
+    model: 'gemini-3.5-flash',
+  },
+  higgins: {
+    title: 'Higgins — Estate & Executive Manager',
+    role: 'Closing Climb real estate pipeline, property ops & closing board',
+    domain: FUNCTIONAL_DOMAINS.REAL_ESTATE,
+    repo: 'BeerCanLabs/SM-higgins',
+    model: 'grok-4',
   },
   'mcp-gateway': {
     title: 'Submind MCP Gateway',
     role: 'Model Context Protocol federation and tool dispatch gateway',
+    domain: FUNCTIONAL_DOMAINS.AGENT_FACTORY,
     repo: 'BeerCanLabs/skippy-matrix',
     model: 'gateway',
   },
+}
+
+const REPO_DOMAINS = {
+  'BeerCanLabs/skippy-matrix': FUNCTIONAL_DOMAINS.AGENT_FACTORY,
+  'BeerCanLabs/SM-archie': FUNCTIONAL_DOMAINS.AGENT_FACTORY,
+  'BeerCanLabs/ev-draftsman': FUNCTIONAL_DOMAINS.AGENT_FACTORY,
+  'BeerCanLabs/closing-climb': FUNCTIONAL_DOMAINS.REAL_ESTATE,
+  'BeerCanLabs/SM-higgins': FUNCTIONAL_DOMAINS.REAL_ESTATE,
+  'BeerCanLabs/SM-donna': FUNCTIONAL_DOMAINS.EXECUTIVE_SUITE,
+  'BeerCanLabs/SM-castle': FUNCTIONAL_DOMAINS.EXECUTIVE_SUITE,
+  'BeerCanLabs/SM-geordi': FUNCTIONAL_DOMAINS.INFRASTRUCTURE,
+  'BeerCanLabs/SM-switch': FUNCTIONAL_DOMAINS.ENGINEERING,
+  'BeerCanLabs/HexSplore': FUNCTIONAL_DOMAINS.ENGINEERING,
+  'BeerCanLabs/ember-orchard-clicker': FUNCTIONAL_DOMAINS.ENGINEERING,
 }
 
 // Window of time an agent's memory sync counts as "actively working now"
@@ -88,10 +120,13 @@ async function fetchActiveTasks() {
 
   const repos = [
     'BeerCanLabs/closing-climb',
+    'BeerCanLabs/skippy-matrix',
     'BeerCanLabs/SM-switch',
     'BeerCanLabs/SM-archie',
     'BeerCanLabs/SM-higgins',
     'BeerCanLabs/SM-donna',
+    'BeerCanLabs/SM-castle',
+    'BeerCanLabs/SM-geordi',
   ]
 
   const tasksByAgent = new Map()
@@ -216,7 +251,11 @@ async function scanThreads() {
     const age = now - latestUpdate
     const running = hasActiveTask
 
-    const project = activeTask ? activeTask.projectName : rawName
+    // Determine the functional domain for this thread
+    let project = profile.domain || FUNCTIONAL_DOMAINS.ENGINEERING
+    if (activeTask) {
+      project = REPO_DOMAINS[activeTask.repo] || activeTask.projectName
+    }
     const projectPath = activeTask ? `https://github.com/${activeTask.repo}` : `https://github.com/${profile.repo}`
     const title = activeTask
       ? `${rawName.toUpperCase()} — Working on #${activeTask.issueNumber}: ${activeTask.title}`
@@ -261,6 +300,39 @@ async function scanThreads() {
     })
   }
 
+  // Always include Web Clients functional tile with Switch
+  threads.push({
+    id: ID('switch-web-clients'),
+    title: 'Switch — Web Clients Engineer',
+    preview: 'Client production web applications, external customer portals & frontends',
+    project: FUNCTIONAL_DOMAINS.WEB_CLIENTS,
+    projectPath: 'https://github.com/BeerCanLabs',
+    cliCommand: 'python3 /Users/skippy/repos/skippy-matrix/scripts/hermes_mcp_client.py ask switch "status"',
+    worktree: '',
+    model: 'claude-opus-4-8',
+    effort: '',
+    cwd: 'https://github.com/BeerCanLabs',
+    gitBranch: 'main',
+    createdAt: now - 86400000,
+    lastActivityAt: now - 3600000,
+    lastFocusedAt: 0,
+    running: false,
+    unread: false,
+    hasError: false,
+    starred: true,
+    routine: '',
+    prState: '',
+    archived: false,
+    sizeBytes: 8192,
+    source: 'gcp-submind',
+    canOpen: true,
+    ref: {
+      agent: 'switch',
+      repo: 'BeerCanLabs',
+      url: 'https://github.com/BeerCanLabs',
+    },
+  })
+
   return threads
 }
 
@@ -303,7 +375,8 @@ async function getGcpIdToken(audience) {
 }
 
 export async function chatWithSubmindAgent(agentName, text, sessionId = 'colony-session') {
-  const normName = (agentName || '').toLowerCase().replace(/^sm-/, '').replace(/^submind:/, '')
+  let normName = (agentName || '').toLowerCase().replace(/^sm-/, '').replace(/^submind:/, '')
+  if (normName.startsWith('switch')) normName = 'switch'
   const serviceUrl = AGENT_SERVICES[normName]
   if (!serviceUrl) {
     return { ok: false, error: `Unknown Submind agent: ${agentName}` }
