@@ -194,6 +194,18 @@ async function present(result) {
   // Only the reason reaches the page: a failure may still carry the adapter's command.
   if (!result || !result.ok) return { ok: false, error: result?.error || 'Nothing to open' }
 
+  // Web links (http/https) are always returned directly to the browser client.
+  if (result.url && (result.url.startsWith('http://') || result.url.startsWith('https://'))) {
+    return { ok: true, url: result.url }
+  }
+
+  // When running in a cloud/container environment (no local desktop), return the URL
+  // so the user's remote browser can handle the deep link or redirect.
+  const isCloud = Boolean(process.env.K_SERVICE || (process.platform === 'linux' && !process.env.DISPLAY))
+  if (isCloud && result.url) {
+    return { ok: true, url: result.url }
+  }
+
   if (process.platform !== 'linux') {
     if (!result.url) return { ok: false, error: 'That harness has no deep link to open on this platform' }
     launch(result.url)
