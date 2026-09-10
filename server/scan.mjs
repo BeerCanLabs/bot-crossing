@@ -29,6 +29,7 @@ function disambiguateProjects(threads) {
   const pathsByName = new Map()
   for (const t of threads) {
     if (!t.project) continue
+    if (t.source === 'gcp-submind' || t.projectPath?.startsWith('http')) continue
     if (!pathsByName.has(t.project)) pathsByName.set(t.project, new Set())
     pathsByName.get(t.project).add(canonical(t.projectPath || ''))
   }

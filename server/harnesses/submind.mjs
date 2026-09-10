@@ -256,7 +256,15 @@ async function scanThreads() {
     if (activeTask) {
       project = REPO_DOMAINS[activeTask.repo] || activeTask.projectName
     }
-    const projectPath = activeTask ? `https://github.com/${activeTask.repo}` : `https://github.com/${profile.repo}`
+    const DOMAIN_URLS = {
+      [FUNCTIONAL_DOMAINS.EXECUTIVE_SUITE]: 'https://github.com/BeerCanLabs',
+      [FUNCTIONAL_DOMAINS.AGENT_FACTORY]: 'https://github.com/BeerCanLabs/skippy-matrix',
+      [FUNCTIONAL_DOMAINS.ENGINEERING]: 'https://github.com/BeerCanLabs',
+      [FUNCTIONAL_DOMAINS.INFRASTRUCTURE]: 'https://github.com/BeerCanLabs/submind-matrix',
+      [FUNCTIONAL_DOMAINS.REAL_ESTATE]: 'https://github.com/BeerCanLabs/closing-climb',
+      [FUNCTIONAL_DOMAINS.WEB_CLIENTS]: 'https://github.com/BeerCanLabs',
+    }
+    const projectPath = DOMAIN_URLS[project] || (activeTask ? `https://github.com/${activeTask.repo}` : `https://github.com/${profile.repo}`)
     const title = activeTask
       ? `${rawName.toUpperCase()} — Working on #${activeTask.issueNumber}: ${activeTask.title}`
       : profile.title
