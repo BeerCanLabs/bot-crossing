@@ -214,7 +214,7 @@ async function scanThreads() {
     const hasActiveTask = Boolean(activeTask)
 
     const age = now - latestUpdate
-    const running = hasActiveTask || age < ACTIVE_WINDOW_MS
+    const running = hasActiveTask
 
     const project = activeTask ? activeTask.projectName : rawName
     const projectPath = activeTask ? `https://github.com/${activeTask.repo}` : `https://github.com/${profile.repo}`
