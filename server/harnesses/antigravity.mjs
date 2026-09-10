@@ -241,6 +241,7 @@ async function scanThreads() {
       sizeBytes,
       source: 'agy',
       canOpen: true,
+      cliCommand: `agy --conversation ${row.conversation_id}`,
       ref: { conversationId: row.conversation_id, cwd: projectPath },
     })
   }

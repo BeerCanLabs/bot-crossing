@@ -330,9 +330,11 @@ function toThread(t) {
     desktopSessionId, desktopSessionIds, cliSessionId, bridgeSessionId,
     titled, hasLiveProcess, transcriptFile, recordActivityAt, ...rest
   } = t
+  const cliId = cliSessionId || (typeof rest.id === 'string' && rest.id.startsWith('claude-code:') ? rest.id.replace('claude-code:', '') : '')
   return {
     ...rest,
     canOpen: isDesktopId(desktopSessionId) || isCliId(cliSessionId),
+    cliCommand: cliId ? `claude resume ${cliId}` : 'claude',
     // The cwd rides along because resuming from a terminal has to happen in the folder the
     // session ran in — the worktree, not the repo root.
     ref: { desktopSessionId, desktopSessionIds, cliSessionId, cwd: t.cwd || '' },

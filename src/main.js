@@ -242,6 +242,18 @@ const actions = {
     }
   },
 
+  copyCliCommand: async () => {
+    const thread = threads.find((t) => t.id === selectedId)
+    if (!thread?.cliCommand) return
+    try {
+      await navigator.clipboard.writeText(thread.cliCommand)
+      hud.toast(`Copied CLI: ${thread.cliCommand}`)
+    } catch {
+      const copied = copyFallback(thread.cliCommand)
+      hud.toast(copied ? `Copied CLI: ${thread.cliCommand}` : 'Could not reach clipboard', copied ? '' : 'err')
+    }
+  },
+
   // Archiving is the colony's own bookkeeping and nothing else: the thread leaves the map and
   // the astronaut walks back to the ship. The harness's own records are never touched — see
   // `reconcileArchived` in server/api.mjs for why that stopped being worth doing.

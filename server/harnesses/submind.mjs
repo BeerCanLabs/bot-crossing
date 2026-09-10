@@ -223,12 +223,17 @@ async function scanThreads() {
       : profile.title
     const preview = activeTask ? activeTask.body.slice(0, 240) : profile.role
 
+    const cliCommand = activeTask
+      ? `gh issue view ${activeTask.issueNumber} -R ${activeTask.repo}`
+      : `python3 /Users/skippy/repos/skippy-matrix/scripts/hermes_mcp_client.py ask ${rawName} "status"`
+
     threads.push({
       id: ID(rawName),
       title,
       preview,
       project,
       projectPath,
+      cliCommand,
       worktree: '',
       model: profile.model,
       effort: '',
