@@ -417,7 +417,7 @@ export async function apiMiddleware(req, res, next) {
       try {
         const { loadTaskConfig, getProvider } = await import('@beercanlabs/bot-crossing-taskboard')
         const config = await loadTaskConfig()
-        const activeId = config.active || 'github'
+        const activeId = process.env.TASK_PROVIDER || config.active || (process.env.NOTION_API_KEY ? 'notion' : 'github')
         const provider = getProvider(activeId)
         if (provider) {
           providerName = provider.name
