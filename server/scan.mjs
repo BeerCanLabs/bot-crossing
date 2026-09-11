@@ -19,6 +19,13 @@ import { HARNESSES, detectedHarnesses, harnessById } from './harnesses/index.mjs
  * name is also the key a saved layout is stored under, so disambiguating unconditionally would
  * move every plot on everybody's map to fix something most people never hit.
  */
+const CONTENT_CREATION_PROJECTS = new Set([
+  'dalesackrider-com',
+  'iquitagain-com',
+  'sackrider-org',
+  'wereadthebible-com',
+])
+
 function disambiguateProjects(threads) {
   // Windows hands the same checkout back as `c:\…` from one transcript and `C:\…` from
   // another: the CLI's project-directory encoding keeps whatever case the drive letter was
@@ -29,7 +36,7 @@ function disambiguateProjects(threads) {
   const pathsByName = new Map()
   for (const t of threads) {
     if (!t.project) continue
-    if (t.source === 'gcp-submind' || t.projectPath?.startsWith('http')) continue
+    if (t.source === 'gcp-submind' || t.project === 'Content Creation' || t.projectPath?.startsWith('http')) continue
     if (!pathsByName.has(t.project)) pathsByName.set(t.project, new Set())
     pathsByName.get(t.project).add(canonical(t.projectPath || ''))
   }
@@ -76,7 +83,13 @@ export async function scanThreads() {
     harnesses.map(async (h) => {
       try {
         const threads = await h.scanThreads()
-        return threads.map((t) => ({ ...t, harness: h.id, harnessName: h.name }))
+        return threads.map((t) => {
+          let project = t.project
+          if (CONTENT_CREATION_PROJECTS.has(project)) {
+            project = 'Content Creation'
+          }
+          return { ...t, project, harness: h.id, harnessName: h.name }
+        })
       } catch (err) {
         console.warn(`bot-crossing: harness "${h.id}" failed to scan —`, err?.message || err)
         return []

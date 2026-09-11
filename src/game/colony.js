@@ -298,6 +298,13 @@ export class Colony {
     }
     this.dormantProjects = dormant
 
+    const isHidden = hiddenProjects instanceof Set
+      ? hiddenProjects.has('Content Creation')
+      : (Array.isArray(hiddenProjects) && hiddenProjects.includes('Content Creation'))
+    if (!byProject.has('Content Creation') && !isHidden) {
+      byProject.set('Content Creation', [])
+    }
+
     const projects = [...byProject.entries()].sort((a, b) => {
       if (b[1].length !== a[1].length) return b[1].length - a[1].length
       return a[0].localeCompare(b[0])

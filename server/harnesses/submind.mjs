@@ -24,6 +24,7 @@ export const FUNCTIONAL_DOMAINS = {
   WEB_CLIENTS: 'Web Clients',
   INFRASTRUCTURE: 'Infrastructure',
   REAL_ESTATE: 'Real Estate',
+  CONTENT_CREATION: 'Content Creation',
 }
 
 // Human-readable titles, roles, and functional domains for each Submind agent
@@ -100,12 +101,31 @@ const REPO_DOMAINS = {
   'BeerCanLabs/closing-climb': FUNCTIONAL_DOMAINS.REAL_ESTATE,
   'BeerCanLabs/SM-higgins': FUNCTIONAL_DOMAINS.REAL_ESTATE,
   'BeerCanLabs/SM-donna': FUNCTIONAL_DOMAINS.EXECUTIVE_SUITE,
-  'BeerCanLabs/SM-castle': FUNCTIONAL_DOMAINS.EXECUTIVE_SUITE,
+  'BeerCanLabs/SM-castle': FUNCTIONAL_DOMAINS.CONTENT_CREATION,
+  'BeerCanLabs/agent-work': FUNCTIONAL_DOMAINS.CONTENT_CREATION,
+  'dsackr/agent-work': FUNCTIONAL_DOMAINS.CONTENT_CREATION,
+  'dsackr/dalesackrider-com': FUNCTIONAL_DOMAINS.CONTENT_CREATION,
+  'dsackr/iquitagain-com': FUNCTIONAL_DOMAINS.CONTENT_CREATION,
+  'dsackr/sackrider-org': FUNCTIONAL_DOMAINS.CONTENT_CREATION,
+  'dsackr/wereadthebible-com': FUNCTIONAL_DOMAINS.CONTENT_CREATION,
+  'BeerCanLabs/dalesackrider-com': FUNCTIONAL_DOMAINS.CONTENT_CREATION,
+  'BeerCanLabs/iquitagain-com': FUNCTIONAL_DOMAINS.CONTENT_CREATION,
+  'BeerCanLabs/sackrider-org': FUNCTIONAL_DOMAINS.CONTENT_CREATION,
+  'BeerCanLabs/wereadthebible-com': FUNCTIONAL_DOMAINS.CONTENT_CREATION,
   'BeerCanLabs/SM-geordi': FUNCTIONAL_DOMAINS.INFRASTRUCTURE,
   'BeerCanLabs/SM-switch': FUNCTIONAL_DOMAINS.ENGINEERING,
   'BeerCanLabs/HexSplore': FUNCTIONAL_DOMAINS.ENGINEERING,
   'BeerCanLabs/ember-orchard-clicker': FUNCTIONAL_DOMAINS.ENGINEERING,
   'dsackr/american-lutheran-church-kellogg': FUNCTIONAL_DOMAINS.WEB_CLIENTS,
+}
+
+// Tracks active content generation / chat activity
+let castleActiveUntil = 0
+let castleActiveReason = ''
+
+export function setCastleActive(reason = 'Generating content', durationMs = 3 * 60 * 1000) {
+  castleActiveUntil = Date.now() + durationMs
+  castleActiveReason = reason
 }
 
 // Window of time an agent's memory sync counts as "actively working now"
@@ -135,6 +155,12 @@ async function fetchActiveTasks() {
     'BeerCanLabs/SM-donna',
     'BeerCanLabs/SM-castle',
     'BeerCanLabs/SM-geordi',
+    'BeerCanLabs/agent-work',
+    'dsackr/agent-work',
+    'dsackr/dalesackrider-com',
+    'dsackr/iquitagain-com',
+    'dsackr/sackrider-org',
+    'dsackr/wereadthebible-com',
     'dsackr/american-lutheran-church-kellogg',
   ]
 
@@ -158,16 +184,44 @@ async function fetchActiveTasks() {
         if (issue.pull_request) continue
 
         const text = `${issue.title} ${issue.body || ''}`.toLowerCase()
+        const isBlogRepo =
+          repo.includes('dalesackrider-com') ||
+          repo.includes('iquitagain-com') ||
+          repo.includes('sackrider-org') ||
+          repo.includes('wereadthebible-com')
+
+        const labels = Array.isArray(issue.labels)
+          ? issue.labels.map((l) => (typeof l === 'string' ? l : l.name || '')).join(' ').toLowerCase()
+          : ''
+        const assignees = Array.isArray(issue.assignees)
+          ? issue.assignees.map((a) => a.login || '').join(' ').toLowerCase()
+          : ''
+
         let targetAgent = ''
 
-        if (repo === 'dsackr/american-lutheran-church-kellogg') targetAgent = 'alc-support'
-        else if (text.includes('switch') || text.includes('sm-switch')) targetAgent = 'switch'
-        else if (text.includes('higgins') || text.includes('sm-higgins')) targetAgent = 'higgins'
-        else if (text.includes('donna') || text.includes('sm-donna')) targetAgent = 'donna'
-        else if (text.includes('archie') || text.includes('sm-archie')) targetAgent = 'archie'
-        else if (text.includes('castle') || text.includes('sm-castle')) targetAgent = 'castle'
-        else if (text.includes('geordi') || text.includes('sm-geordi')) targetAgent = 'geordi'
-        else if (text.includes('draftsman') || text.includes('ev-draftsman')) targetAgent = 'draftsman'
+        if (isBlogRepo) targetAgent = 'castle'
+        else if (repo === 'dsackr/american-lutheran-church-kellogg') targetAgent = 'alc-support'
+        else if (
+          labels.includes('castle') ||
+          assignees.includes('castle') ||
+          text.includes('castle') ||
+          text.includes('sm-castle') ||
+          ((repo.includes('agent-work') || repo.includes('castle')) &&
+            (text.includes('blog') ||
+              text.includes('linkedin') ||
+              text.includes('research') ||
+              text.includes('content') ||
+              text.includes('essay') ||
+              text.includes('article') ||
+              text.includes('voice')))
+        ) {
+          targetAgent = 'castle'
+        } else if (labels.includes('switch') || assignees.includes('switch') || text.includes('switch') || text.includes('sm-switch')) targetAgent = 'switch'
+        else if (labels.includes('higgins') || assignees.includes('higgins') || text.includes('higgins') || text.includes('sm-higgins')) targetAgent = 'higgins'
+        else if (labels.includes('donna') || assignees.includes('donna') || text.includes('donna') || text.includes('sm-donna')) targetAgent = 'donna'
+        else if (labels.includes('archie') || assignees.includes('archie') || text.includes('archie') || text.includes('sm-archie')) targetAgent = 'archie'
+        else if (labels.includes('geordi') || assignees.includes('geordi') || text.includes('geordi') || text.includes('sm-geordi')) targetAgent = 'geordi'
+        else if (labels.includes('draftsman') || assignees.includes('draftsman') || text.includes('draftsman') || text.includes('ev-draftsman')) targetAgent = 'draftsman'
 
         if (targetAgent && !tasksByAgent.has(targetAgent)) {
           tasksByAgent.set(targetAgent, {
@@ -264,16 +318,23 @@ async function scanThreads() {
       latestUpdate = Date.parse(bucket.metadata.updated || bucket.metadata.timeCreated) || now
     }
 
-    // Check if agent has an active GitHub task
+    // Check if agent has an active GitHub task or active interactive session
     const activeTask = activeTasks.get(rawName)
-    const hasActiveTask = Boolean(activeTask)
+    const isCastleChatActive = rawName === 'castle' && Date.now() < castleActiveUntil
+    const hasActiveTask = Boolean(activeTask) || isCastleChatActive
 
     const age = now - latestUpdate
     const running = hasActiveTask
 
     // Determine the functional domain for this thread
     let project = profile.domain || FUNCTIONAL_DOMAINS.ENGINEERING
-    if (activeTask) {
+    if (rawName === 'castle') {
+      if (running) {
+        project = FUNCTIONAL_DOMAINS.CONTENT_CREATION
+      } else {
+        project = FUNCTIONAL_DOMAINS.EXECUTIVE_SUITE
+      }
+    } else if (activeTask) {
       project = REPO_DOMAINS[activeTask.repo] || activeTask.projectName
     }
     const DOMAIN_URLS = {
@@ -283,12 +344,18 @@ async function scanThreads() {
       [FUNCTIONAL_DOMAINS.INFRASTRUCTURE]: 'https://github.com/BeerCanLabs/submind-matrix',
       [FUNCTIONAL_DOMAINS.REAL_ESTATE]: 'https://github.com/BeerCanLabs/closing-climb',
       [FUNCTIONAL_DOMAINS.WEB_CLIENTS]: 'https://github.com/BeerCanLabs',
+      [FUNCTIONAL_DOMAINS.CONTENT_CREATION]: 'https://dalesackrider.com',
     }
     const projectPath = DOMAIN_URLS[project] || (activeTask ? `https://github.com/${activeTask.repo}` : `https://github.com/${profile.repo}`)
-    const title = activeTask
-      ? `${rawName.toUpperCase()} — Working on #${activeTask.issueNumber}: ${activeTask.title}`
-      : profile.title
-    const preview = activeTask ? activeTask.body.slice(0, 240) : profile.role
+    let title = profile.title
+    let preview = profile.role
+    if (activeTask) {
+      title = `${rawName.toUpperCase()} — Working on #${activeTask.issueNumber}: ${activeTask.title}`
+      preview = activeTask.body.slice(0, 240)
+    } else if (isCastleChatActive) {
+      title = `CASTLE — Generating Content`
+      preview = castleActiveReason || 'Thought leadership, blog authoring & reflections'
+    }
 
     const cliCommand = activeTask
       ? `gh issue view ${activeTask.issueNumber} -R ${activeTask.repo}`
@@ -374,6 +441,9 @@ async function getGcpIdToken(audience) {
 export async function chatWithSubmindAgent(agentName, text, sessionId = 'colony-session') {
   let normName = (agentName || '').toLowerCase().replace(/^sm-/, '').replace(/^submind:/, '')
   if (normName.startsWith('switch')) normName = 'switch'
+  if (normName === 'castle') {
+    setCastleActive(`Generating content: ${text.slice(0, 80)}`, 3 * 60 * 1000)
+  }
   const serviceUrl = AGENT_SERVICES[normName]
   if (!serviceUrl) {
     return { ok: false, error: `Unknown Submind agent: ${agentName}` }
