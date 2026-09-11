@@ -1,0 +1,13 @@
+{
+  "id": "rbac",
+  "name": "Role-Based Access Control",
+  "version": "1.0.0",
+  "description": "Enterprise multi-user access control supporting Admin, Agent Manager, and Spectator roles with Cloudflare Zero Trust and pluggable AuthN.",
+  "category": "security",
+  "icon": "🛡️",
+  "author": "BeerCanLabs",
+  "entry": {
+    "server": "./index.js",
+    "client": "./client/index.js"
+  }
+}

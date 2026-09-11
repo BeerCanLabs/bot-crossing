@@ -1,0 +1,38 @@
+{
+  "name": "@beercanlabs/bot-crossing-taskboard",
+  "version": "0.1.0",
+  "description": "Standalone 3D Task Board billboard and configurable work provider plugin for Bot Crossing.",
+  "main": "index.js",
+  "type": "module",
+  "license": "MIT",
+  "author": "BeerCanLabs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BeerCanLabs/bot-crossing-taskboard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/BeerCanLabs/bot-crossing-taskboard/issues"
+  },
+  "homepage": "https://github.com/BeerCanLabs/bot-crossing-taskboard#readme",
+  "keywords": [
+    "bot-crossing",
+    "threejs",
+    "vite-plugin",
+    "task-board",
+    "kanban",
+    "github-issues",
+    "notion",
+    "jira",
+    "linear",
+    "paperclip"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client/inject.js",
+    "./*": "./*"
+  },
+  "peerDependencies": {
+    "three": ">=0.160.0",
+    "vite": ">=5.0.0"
+  }
+}

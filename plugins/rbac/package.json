@@ -1,0 +1,21 @@
+{
+  "name": "@beercanlabs/bot-crossing-rbac",
+  "version": "1.0.0",
+  "description": "Role-Based Access Control and multi-user auth for Bot Crossing",
+  "main": "index.js",
+  "type": "module",
+  "license": "MIT",
+  "author": "BeerCanLabs",
+  "keywords": [
+    "bot-crossing",
+    "bot-crossing-plugin",
+    "rbac",
+    "auth",
+    "cloudflare-access"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client/index.js",
+    "./*": "./*"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "id": "billboard",
+  "name": "Task Board Billboard",
+  "version": "1.0.0",
+  "description": "Procedural 3D billboard next to the spaceship tracking active tasks from Notion, GitHub, Jira, and Linear.",
+  "category": "world-structure",
+  "icon": "📋",
+  "author": "BeerCanLabs",
+  "entry": {
+    "server": "./index.js",
+    "client": "./client/inject.js"
+  }
+}

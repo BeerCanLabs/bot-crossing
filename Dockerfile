@@ -27,6 +27,7 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/public ./public
 COPY server ./server
 COPY tools ./tools
+COPY plugins ./plugins
 
 EXPOSE 8080
 
