@@ -11,6 +11,9 @@
  *   2. Replicated state & memory snapshots directly from Google Cloud Storage
  *      (`gs://submind-matrix-*-memory`).
  */
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { Storage } from '@google-cloud/storage'
 
 const PROJECT_ID = process.env.GCP_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT || 'submind-matrix'
@@ -357,9 +360,7 @@ async function scanThreads() {
       preview = castleActiveReason || 'Thought leadership, blog authoring & reflections'
     }
 
-    const cliCommand = activeTask
-      ? `gh issue view ${activeTask.issueNumber} -R ${activeTask.repo}`
-      : `python3 /Users/skippy/repos/skippy-matrix/scripts/hermes_mcp_client.py ask ${rawName} "status"`
+    const cliCommand = resolveSubmindCliCommand(rawName, activeTask)
 
     threads.push({
       id: ID(rawName),
@@ -597,6 +598,32 @@ export async function scanCronJobs() {
       source: 'GCP Cloud Scheduler',
     },
   ]
+}
+
+function resolveSubmindCliCommand(rawName, activeTask) {
+  if (activeTask) {
+    return `gh issue view ${activeTask.issueNumber} -R ${activeTask.repo}`
+  }
+
+  // 1. Check if hermes_mcp_client.py exists in known local repository paths
+  const home = os.homedir()
+  const candidatePaths = [
+    process.env.HERMES_CLIENT_PATH,
+    path.join(home, 'repos', 'BeerCanLabs', 'skippy-matrix', 'scripts', 'hermes_mcp_client.py'),
+    path.join(home, 'repos', 'BeerCanLabs', 'skippy-factory', 'skippy-matrix', 'scripts', 'hermes_mcp_client.py'),
+    path.join(home, 'repos', 'skippy-matrix', 'scripts', 'hermes_mcp_client.py'),
+  ].filter(Boolean)
+
+  for (const p of candidatePaths) {
+    try {
+      if (fs.existsSync(p)) {
+        return `python3 ${p} ask ${rawName} "status"`
+      }
+    } catch {}
+  }
+
+  // 2. Portable Cloud Run service inspection command
+  return `gcloud run services describe sm-${rawName} --region=us-central1 --project=${PROJECT_ID}`
 }
 
 export default {
