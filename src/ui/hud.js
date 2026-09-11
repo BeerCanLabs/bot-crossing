@@ -1628,10 +1628,10 @@ const TEMPLATE = `
   <div class="task-board-window panel">
     <div class="task-board-head">
       <div class="task-board-title-group">
-        <div class="task-board-badge"><i class="task-dot"></i> TASKS</div>
+        <div class="task-board-badge"><i class="task-dot"></i> THE SUBMIND</div>
         <div class="task-board-title-text">
-          <h2>Colony Task Board</h2>
-          <span class="task-board-subtitle">In-flight agent tasks &amp; scheduled cronjobs</span>
+          <h2>The Submind</h2>
+          <span class="task-board-subtitle">Active operations deck &amp; agent task queue</span>
         </div>
       </div>
       <div class="task-board-head-actions">

@@ -287,10 +287,10 @@ export class TaskBoardBillboard {
 
     // Main header title: "TASKS"
     c.shadowColor = 'rgba(0, 229, 255, 0.85)'
-    c.shadowBlur = 16
-    c.fillStyle = '#ffffff'
-    c.font = 'bold 50px "SF Mono", "Courier New", monospace'
-    c.fillText('TASKS', 62, 73)
+    // Main header title: "THE SUBMIND"
+    c.fillStyle = '#00f0ff'
+    c.font = '900 40px "SF Pro Display", -apple-system, sans-serif'
+    c.fillText('THE SUBMIND', 62, 73)
     c.shadowBlur = 0
 
     // Header secondary subtitle/badge
