@@ -336,6 +336,56 @@ const sideWidth = () => (window.innerWidth <= 820 ? 0 : 334)
 hud.setSideWidth(sideWidth())
 window.addEventListener('resize', () => hud.setSideWidth(sideWidth()))
 
+// ── plugin & extension hooks ──────────────────────────────────────────────────────────
+window.botCrossing = {
+  get engine() { return engine },
+  get rig() { return rig },
+  colony,
+  settings,
+  hud,
+  poll,
+  get threads() { return threads },
+  hooks: {
+    'card:render': new Set(),
+    'hud:action': new Set(),
+    'world:ready': new Set(),
+  },
+  on(event, fn) {
+    if (!this.hooks[event]) this.hooks[event] = new Set()
+    this.hooks[event].add(fn)
+  },
+  off(event, fn) {
+    this.hooks[event]?.delete(fn)
+  },
+  emit(event, ...args) {
+    const set = this.hooks[event]
+    if (!set) return false
+    for (const fn of set) {
+      const res = fn(...args)
+      if (res) return res
+    }
+    return false
+  },
+}
+
+// Load active client plugin scripts if provided by the server
+;(async function loadClientPlugins() {
+  try {
+    const res = await fetch('/api/plugins/client-scripts')
+    if (res.ok) {
+      const { scripts } = await res.json()
+      if (Array.isArray(scripts)) {
+        for (const src of scripts) {
+          const s = document.createElement('script')
+          s.type = 'module'
+          s.src = src
+          document.head.appendChild(s)
+        }
+      }
+    }
+  } catch {}
+})()
+
 // Initialize Colony RBAC user session & HUD badge
 ;(async function initColonyAuth() {
   try {
@@ -897,8 +947,7 @@ engine.add({
 engine.start()
 boot()
 
-// Handy for poking at the running colony from the console.
-window.botCrossing = { engine, rig, colony, settings, hud, poll, get threads() { return threads } }
+// window.botCrossing is initialized above with plugin hook support
 
 /** `execCommand('copy')` over a throwaway textarea — the copy that predates permissions. */
 function copyFallback(text) {

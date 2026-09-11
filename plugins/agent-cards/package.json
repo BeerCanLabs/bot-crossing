@@ -1,0 +1,13 @@
+{
+  "name": "@beercanlabs/bot-crossing-agent-cards",
+  "version": "1.0.0",
+  "description": "Custom Agent Cards with Chat, Scheduled Cron Trigger, and Task Management for Bot Crossing",
+  "main": "index.js",
+  "type": "module",
+  "license": "MIT",
+  "author": "BeerCanLabs",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client/index.js"
+  }
+}

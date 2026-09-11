@@ -680,6 +680,35 @@ export class Hud {
     this.selected = { agent, thread }
     card.classList.add('on')
 
+    if (!this._defaultCardTemplate) {
+      this._defaultCardTemplate = card.innerHTML
+    }
+
+    // Allow plugins to customize or completely replace the card render
+    if (window.botCrossing?.emit('card:render', { agent, thread, card, hud: this })) {
+      this._customCardRendered = true
+      this._cardSize = { w: card.offsetWidth, h: card.offsetHeight }
+      return
+    }
+
+    if (this._customCardRendered) {
+      card.innerHTML = this._defaultCardTemplate
+      card.style.background = ''
+      card.style.border = ''
+      card.style.boxShadow = ''
+      card.style.padding = ''
+      this._customCardRendered = false
+      card.querySelector('#btn-chat')?.addEventListener('click', () => {
+        if (this.selected?.thread) this.openChat(this.selected.thread, this.selected.agent)
+      })
+      card.querySelector('#btn-open')?.addEventListener('click', () => this.actions.openThread?.())
+      card.querySelector('#btn-copy-cli')?.addEventListener('click', () => this.actions.copyCliCommand?.())
+      card.querySelector('.cli-pill')?.addEventListener('click', () => this.actions.copyCliCommand?.())
+      card.querySelector('#btn-viewed')?.addEventListener('click', () => this.actions.markViewed?.())
+      card.querySelector('#btn-archive')?.addEventListener('click', () => this.actions.archiveThread?.())
+      card.querySelector('#btn-deselect')?.addEventListener('click', () => this.actions.select?.(null))
+    }
+
     this.$('.thread-pop .title').textContent = thread.title || 'Untitled thread'
     const status = STATUS_LABEL[agent.status] || agent.status
     const meta = this.$('.thread-pop .meta')

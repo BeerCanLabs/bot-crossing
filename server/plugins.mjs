@@ -35,6 +35,17 @@ const OFFICIAL_CATALOG = [
     icon: '🛡️',
     package: '@beercanlabs/bot-crossing-rbac',
     repo: 'https://github.com/BeerCanLabs/bot-crossing-plugins/tree/main/packages/rbac'
+  },
+  {
+    id: 'agent-cards',
+    name: 'Custom Agent Cards',
+    version: '1.0.0',
+    description: 'Custom astronaut cards with interactive chat, cron routine inspection with manual triggers, and task backlog management.',
+    author: 'BeerCanLabs',
+    category: 'agent-interface',
+    icon: '🪪',
+    package: '@beercanlabs/bot-crossing-agent-cards',
+    repo: 'https://github.com/BeerCanLabs/bot-crossing-plugins/tree/main/packages/agent-cards'
   }
 ]
 
@@ -55,6 +66,13 @@ export class PluginManager {
           enabled: true,
           package: '@beercanlabs/bot-crossing-rbac',
           category: 'security'
+        },
+        'agent-cards': {
+          id: 'agent-cards',
+          name: 'Custom Agent Cards',
+          enabled: true,
+          package: '@beercanlabs/bot-crossing-agent-cards',
+          category: 'agent-interface'
         }
       }
     }
@@ -67,7 +85,14 @@ export class PluginManager {
       if (fs.existsSync(PLUGINS_FILE)) {
         const raw = JSON.parse(fs.readFileSync(PLUGINS_FILE, 'utf-8'))
         if (raw.installed) {
-          this.state.installed = raw.installed
+          const hadNewPlugins = Object.keys(this.state.installed).some((k) => !raw.installed[k])
+          this.state.installed = {
+            ...this.state.installed,
+            ...raw.installed
+          }
+          if (hadNewPlugins) {
+            this.saveState()
+          }
         }
       } else {
         this.saveState()
@@ -110,6 +135,11 @@ export class PluginManager {
     if (id === 'rbac') {
       return await import('@beercanlabs/bot-crossing-rbac')
     }
+    if (id === 'agent-cards') {
+      try {
+        return await import('@beercanlabs/bot-crossing-agent-cards')
+      } catch {}
+    }
 
     return null
   }
@@ -129,6 +159,12 @@ export class PluginManager {
     }
     if (mod.createTaskBoardMiddleware) {
       return mod.createTaskBoardMiddleware()
+    }
+    if (mod.createAgentCardsMiddleware || id === 'agent-cards') {
+      const fn = mod.createAgentCardsMiddleware || mod.createMiddleware || mod.default
+      if (typeof fn === 'function') {
+        return fn({ dataDir: DATA_DIR })
+      }
     }
     return null
   }
@@ -205,6 +241,20 @@ export class PluginManager {
     }
   }
 
+  getClientScripts() {
+    const scripts = []
+    for (const [id, item] of this.loadedPlugins.entries()) {
+      const localClientPath = path.join(LOCAL_PLUGINS_DIR, id, 'client', 'index.js')
+      const monorepoClientPath = path.join(here, '..', '..', 'bot-crossing-plugins', 'packages', id, 'client', 'index.js')
+      if (fs.existsSync(localClientPath) || fs.existsSync(monorepoClientPath)) {
+        scripts.push(`/plugins/${id}/client/index.js`)
+      } else if (item.mod?.clientScriptUrl) {
+        scripts.push(item.mod.clientScriptUrl)
+      }
+    }
+    return scripts
+  }
+
   /**
    * Middleware chain for all active plugins
    */
@@ -228,6 +278,15 @@ export class PluginManager {
       const url = new URL(req.url, 'http://localhost')
       if (url.pathname.startsWith('/api/taskboard')) {
         return billboard.middleware(req, res, next)
+      }
+    }
+
+    // 3. Agent Cards runs next if enabled
+    const agentCards = this.loadedPlugins.get('agent-cards')
+    if (agentCards?.middleware) {
+      const url = new URL(req.url, 'http://localhost')
+      if (url.pathname.startsWith('/api/agent-cards')) {
+        return agentCards.middleware(req, res, next)
       }
     }
 

@@ -1,0 +1,11 @@
+{
+  "id": "agent-cards",
+  "name": "Custom Agent Cards",
+  "version": "1.0.0",
+  "description": "Enhanced astronaut inspection cards featuring interactive agent chat, per-agent cron routine inspection with manual run triggers, and direct backlog/task management.",
+  "author": "BeerCanLabs",
+  "category": "agent-interface",
+  "icon": "🪪",
+  "package": "@beercanlabs/bot-crossing-agent-cards",
+  "clientScript": "client/index.js"
+}
