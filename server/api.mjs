@@ -404,6 +404,9 @@ export async function apiMiddleware(req, res, next) {
     }
 
     if (url.pathname === '/api/plugins/toggle' && req.method === 'POST') {
+      if (req.auth && req.auth.role !== 'admin') {
+        return send(res, 403, { error: 'Admin privileges required to toggle plugins.' })
+      }
       const { id, enabled } = await readJsonBody(req)
       const result = await pluginManager.setPluginEnabled(id, enabled)
       return send(res, 200, { ok: true, plugin: result })

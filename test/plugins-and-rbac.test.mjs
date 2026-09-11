@@ -47,12 +47,12 @@ test('RBAC: Cloudflare Access email header authenticates user', async () => {
     const res = await fetch(`${base}/api/rbac/me`, {
       headers: {
         Origin: base,
-        'Cf-Access-Authenticated-User-Email': 'dale@sackrider.com'
+        'Cf-Access-Authenticated-User-Email': 'dale.sackrider@gmail.com'
       }
     })
     assert.equal(res.status, 200)
     const me = await res.json()
-    assert.equal(me.user.email, 'dale@sackrider.com')
+    assert.equal(me.user.email, 'dale.sackrider@gmail.com')
     assert.equal(me.role, 'admin')
     assert.equal(me.isAdmin, true)
   })
@@ -63,7 +63,7 @@ test('RBAC: Admin can manage roles and assign Agent Manager with specific agents
     const adminHeaders = {
       Origin: base,
       'Content-Type': 'application/json',
-      'Cf-Access-Authenticated-User-Email': 'dale@sackrider.com'
+      'Cf-Access-Authenticated-User-Email': 'dale.sackrider@gmail.com'
     }
 
     // 1. Assign alice as agent_manager for sm-castle

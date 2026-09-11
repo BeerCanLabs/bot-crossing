@@ -21,7 +21,7 @@ export class RbacStore {
         }
       } else {
         // If file doesn't exist, create initial bootstrap with admin
-        const initialAdmin = process.env.COLONY_ADMIN_EMAIL || 'dale@sackrider.com'
+        const initialAdmin = process.env.COLONY_ADMIN_EMAIL || 'dale.sackrider@gmail.com'
         this.data.users[initialAdmin.toLowerCase()] = {
           role: 'admin',
           allowedAgents: ['*'],
@@ -50,15 +50,18 @@ export class RbacStore {
     if (!email) return { role: 'spectator', allowedAgents: [] }
     const normalized = email.toLowerCase().trim()
 
+    // dale@sackrider.com is explicitly barred
+    if (normalized === 'dale@sackrider.com') {
+      return { role: 'unauthorized', allowedAgents: [] }
+    }
+
     // Recognize owner / admin emails
     const defaultAdmins = [
-      'dale@sackrider.com',
       'dale.sackrider@gmail.com',
       'dalesackrider@gmail.com',
-      'dsackrider@gmail.com',
-      'dale@beercanlabs.com'
+      'dsackrider@gmail.com'
     ]
-    if (defaultAdmins.includes(normalized) || normalized.includes('sackrider')) {
+    if (defaultAdmins.includes(normalized)) {
       return {
         role: 'admin',
         allowedAgents: ['*']
