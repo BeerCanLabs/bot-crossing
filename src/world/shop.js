@@ -26,13 +26,13 @@ export class ShopKiosk {
     this.hovered = false
     this.raycaster = new THREE.Raycaster()
 
-    // Positioned opposite the billboard on the port side (-X, -Z)
-    this.relOffset = new THREE.Vector3(-5.2, 0, -4.8)
+    // Positioned to the left of the spaceship on the port side, fully visible in front of the camera
+    this.relOffset = new THREE.Vector3(-2.0, 0, 5.5)
     this.position = new THREE.Vector3().addVectors(shipPos, this.relOffset)
     this.group.position.copy(this.position)
 
-    // Angled facing isometric camera and colony center
-    this.group.rotation.y = -Math.PI * 0.25
+    // Angled squarely towards the default isometric camera and colony center
+    this.group.rotation.y = Math.PI * 0.25
 
     this._buildMesh()
     this._positionOnTerrain()
