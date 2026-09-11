@@ -49,6 +49,21 @@ export class RbacStore {
   getUser(email) {
     if (!email) return { role: 'spectator', allowedAgents: [] }
     const normalized = email.toLowerCase().trim()
+
+    // Recognize owner / admin emails
+    const defaultAdmins = [
+      'dale@sackrider.com',
+      'dale.sackrider@gmail.com',
+      'dalesackrider@gmail.com',
+      'dsackrider@gmail.com',
+      'dale@beercanlabs.com'
+    ]
+    if (defaultAdmins.includes(normalized) || normalized.includes('sackrider')) {
+      return {
+        role: 'admin',
+        allowedAgents: ['*']
+      }
+    }
     
     // If table is completely empty, make the first user admin
     const userKeys = Object.keys(this.data.users)

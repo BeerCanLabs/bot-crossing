@@ -15,6 +15,28 @@ export function resolveAuthUser(req) {
     }
   }
 
+  // 1b. Cloudflare JWT Assertion fallback
+  const cfJwt = req.headers['cf-access-jwt-assertion']
+  if (cfJwt && typeof cfJwt === 'string') {
+    try {
+      const parts = cfJwt.split('.')
+      if (parts.length >= 2) {
+        const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf-8'))
+        if (payload.email) {
+          const email = payload.email.trim().toLowerCase()
+          return {
+            id: email,
+            email,
+            name: email.split('@')[0],
+            provider: 'cloudflare-jwt'
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[RBAC] Failed to parse CF JWT:', err.message)
+    }
+  }
+
   // 2. Generic Reverse Proxy / OAuth / SAML headers
   const proxyEmail = req.headers['x-forwarded-email'] || req.headers['x-user-email']
   if (proxyEmail && typeof proxyEmail === 'string' && proxyEmail.trim().length > 0) {
