@@ -14,6 +14,20 @@ is the only file it writes anywhere.
 > issues and PRs are welcome but may go unanswered, and forking is an entirely reasonable
 > thing to do. [CONTRIBUTING.md](CONTRIBUTING.md) sets out what to expect.
 
+---
+
+## 🛍️ The Colony Depot & Addon Ecosystem
+
+![Colony Depot & Plugin Store](docs/assets/colony-depot.jpg)
+
+Standing next to the spaceship is the **Colony Depot Kiosk** — the in-game workshop and store where admins can install, toggle, and configure modular colony addons directly from inside the 3D world:
+
+- 📋 **Task Board Billboard (`@beercanlabs/bot-crossing-billboard`):** Procedural 3D billboard rendering live monospace telemetry and tasks from Notion, GitHub Issues, Jira, Linear, and Paperclip.
+- 🛡️ **Role-Based Access Control (`@beercanlabs/bot-crossing-rbac`):** Turn your colony into a true multi-user operations center with 3 scoped roles (**Admin**, **Agent Manager**, and **Spectator**) powered by Cloudflare Zero Trust Access.
+- 🔌 **Extensible Plugin Spec:** Discover, download, and configure official and community addons from the monorepo at [BeerCanLabs/bot-crossing-plugins](https://github.com/BeerCanLabs/bot-crossing-plugins).
+
+---
+
 ## Run it
 
 ```bash
