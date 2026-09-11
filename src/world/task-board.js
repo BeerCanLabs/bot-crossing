@@ -35,13 +35,14 @@ export class TaskBoardBillboard {
     this.raycaster = new THREE.Raycaster()
 
     // Billboard world offset relative to ship position:
-    // Placed right beside the spaceship ramp landing zone at the apron edge.
-    this.relOffset = new THREE.Vector3(7.0, 0, 4.2)
+    // Placed directly in the dirt to the right of the spaceship (starboard side, -Z).
+    // Sits in its own open spot in the regolith with no hex tiles or foundation slabs.
+    this.relOffset = new THREE.Vector3(5.2, 0, -5.0)
     this.position = new THREE.Vector3().addVectors(shipPos, this.relOffset)
     this.group.position.copy(this.position)
 
-    // Angled ~50 degrees to face squarely toward the default isometric camera and colony center
-    this.group.rotation.y = Math.PI * 0.28
+    // Angled to face squarely toward the default isometric camera and colony center
+    this.group.rotation.y = Math.PI * 0.25
 
     this._setupCanvas()
     this._buildMesh()
@@ -75,19 +76,7 @@ export class TaskBoardBillboard {
   }
 
   _buildMesh() {
-    // 0. Foundation pad / anchor circle on ground
-    const foundationGeo = new THREE.CylinderGeometry(2.2, 2.4, 0.12, 16)
-    const foundationMat = new THREE.MeshStandardMaterial({
-      color: 0x22252c,
-      roughness: 0.8,
-      metalness: 0.4,
-    })
-    const foundation = new THREE.Mesh(foundationGeo, foundationMat)
-    foundation.position.set(0, 0.06, 0)
-    foundation.receiveShadow = true
-    this.group.add(foundation)
-
-    // 1. Structural pylons (legs)
+    // 1. Structural pylons (legs planted directly into the terrain dirt)
     const legGeo = new THREE.CylinderGeometry(0.1, 0.12, 4.2, 8)
     const legMat = new THREE.MeshStandardMaterial({
       color: METAL_COLOR,
