@@ -48,6 +48,7 @@ const ICON = {
   chat: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
   send: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`,
   trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+  tasks: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 12l2 2 4-4"/><path d="M9 7h6M9 17h6"/></svg>`,
 }
 
 const STAT_DEFS = [
@@ -70,6 +71,9 @@ export class Hud {
     this.chatAgent = null
     this.chatAgentName = null
     this.isSending = false
+    this.isTaskBoardOpen = false
+    this.taskBoardData = { tasks: [], cronjobs: [] }
+    this.activeTaskBoardTab = 'tasks'
 
     this.el = document.createElement('div')
     this.el.className = 'hud'
@@ -360,6 +364,35 @@ export class Hud {
 
     on('#btn-settings', 'click', () => this.toggleSettings())
     on('#btn-close-settings', 'click', () => this.toggleSettings(false))
+    on('#btn-tasks', 'click', () => this.toggleTaskBoard())
+    on('#btn-task-board-close', 'click', () => this.closeTaskBoard())
+    on('.task-board-backdrop', 'click', () => this.closeTaskBoard())
+    const tbWindow = this.$('.task-board-window')
+    if (tbWindow) tbWindow.addEventListener('click', (e) => e.stopPropagation())
+
+    on('#tab-tasks-btn', 'click', () => this.switchTaskBoardTab('tasks'))
+    on('#tab-cron-btn', 'click', () => this.switchTaskBoardTab('cron'))
+
+    const tbTaskList = this.$('#task-board-task-list')
+    if (tbTaskList) {
+      tbTaskList.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-action]')
+        if (!btn) return
+        const action = btn.dataset.action
+        const id = btn.dataset.id
+        const agent = btn.dataset.agent
+        if (action === 'locate' && id) {
+          this.closeTaskBoard()
+          this.actions.focusThread?.(id)
+        } else if (action === 'open-thread' && id) {
+          this.actions.openThreadById?.(id)
+        } else if (action === 'chat' && agent) {
+          this.closeTaskBoard()
+          this.actions.openChatForAgent?.(agent)
+        }
+      })
+    }
+
     on('#btn-hide', 'click', () => this.toggleUi())
     on('#btn-help', 'click', () => this.toggleHelp())
     on('#btn-shot', 'click', () => this.actions.screenshot?.())
@@ -839,6 +872,168 @@ export class Hud {
     return this.visible
   }
 
+  openTaskBoard() {
+    this.isTaskBoardOpen = true
+    const modal = this.$('#task-board-modal')
+    if (modal) {
+      modal.classList.add('open')
+      this.renderTaskBoard()
+    }
+  }
+
+  closeTaskBoard() {
+    this.isTaskBoardOpen = false
+    const modal = this.$('#task-board-modal')
+    if (modal) {
+      modal.classList.remove('open')
+    }
+  }
+
+  toggleTaskBoard(force) {
+    const next = force ?? !this.isTaskBoardOpen
+    if (next) this.openTaskBoard()
+    else this.closeTaskBoard()
+  }
+
+  switchTaskBoardTab(tab) {
+    this.activeTaskBoardTab = tab
+    const tabTasksBtn = this.$('#tab-tasks-btn')
+    const tabCronBtn = this.$('#tab-cron-btn')
+    const paneTasks = this.$('#pane-tasks')
+    const paneCron = this.$('#pane-cron')
+
+    if (tab === 'tasks') {
+      tabTasksBtn?.classList.add('active')
+      tabCronBtn?.classList.remove('active')
+      if (paneTasks) paneTasks.style.display = 'block'
+      if (paneCron) paneCron.style.display = 'none'
+    } else {
+      tabCronBtn?.classList.add('active')
+      tabTasksBtn?.classList.remove('active')
+      if (paneCron) paneCron.style.display = 'block'
+      if (paneTasks) paneTasks.style.display = 'none'
+    }
+    this.renderTaskBoard()
+  }
+
+  updateTaskBoard(data) {
+    if (!data) return
+    this.taskBoardData = data
+    const taskCount = this.taskBoardData.tasks?.length || 0
+    const cronCount = this.taskBoardData.cronjobs?.length || 0
+
+    const taskBadge = this.$('#task-count-badge')
+    if (taskBadge) taskBadge.textContent = String(taskCount)
+    const cronBadge = this.$('#cron-count-badge')
+    if (cronBadge) cronBadge.textContent = String(cronCount)
+
+    if (this.isTaskBoardOpen) {
+      this.renderTaskBoard()
+    }
+  }
+
+  renderTaskBoard() {
+    const taskListEl = this.$('#task-board-task-list')
+    const cronListEl = this.$('#task-board-cron-list')
+
+    if (this.activeTaskBoardTab === 'tasks' && taskListEl) {
+      const tasks = this.taskBoardData.tasks || []
+      if (tasks.length === 0) {
+        taskListEl.innerHTML = `
+          <div class="task-board-empty">
+            <div class="empty-glyph">✓</div>
+            <h3>All systems nominal</h3>
+            <p>No agent tasks currently in flight. The crew is standing by at their plots.</p>
+          </div>
+        `
+      } else {
+        taskListEl.innerHTML = tasks
+          .map((t) => {
+            const rawAgent = t.agent || t.harness || 'agent'
+            const agentName = rawAgent.charAt(0).toUpperCase() + rawAgent.slice(1)
+            const color = getAgentColor(rawAgent)
+            const initial = getAgentInitial(agentName)
+            const status = t.running ? 'working' : t.unread ? 'waiting' : t.hasError ? 'blocked' : 'active'
+            const statusLabel = t.running ? 'WORKING ⚒' : t.unread ? 'WAITING ON YOU ❓' : t.hasError ? 'BLOCKED ⚠️' : 'ACTIVE'
+            const canChat = t.harness === 'submind'
+
+            return `
+              <div class="task-card">
+                <div class="task-card-header">
+                  <div class="task-agent-meta">
+                    <span class="agent-avatar-circle" style="background:${color}">${initial}</span>
+                    <div class="agent-labels">
+                      <span class="agent-name">${escapeHtml(agentName)}</span>
+                      <span class="agent-domain">${escapeHtml(t.project || 'Colony')}</span>
+                    </div>
+                  </div>
+                  <span class="task-status-pill ${status}"><i class="pulse-dot"></i>${statusLabel}</span>
+                </div>
+                <div class="task-card-title">${escapeHtml(t.title || 'Untitled task')}</div>
+                ${t.preview ? `<div class="task-card-preview">${escapeHtml(t.preview)}</div>` : ''}
+                <div class="task-card-footer">
+                  <span class="harness-badge">${escapeHtml(t.harnessName || t.harness || '')}</span>
+                  <div class="task-card-actions">
+                    <button type="button" class="btn small" data-action="locate" data-id="${t.id}">${ICON.locate} Locate</button>
+                    ${t.url ? `<a class="btn small primary" href="${t.url}" target="_blank" rel="noopener noreferrer">${ICON.open} Open Task</a>` : ''}
+                    ${canChat ? `<button type="button" class="btn small" data-action="chat" data-agent="${rawAgent}">${ICON.chat} Chat</button>` : ''}
+                  </div>
+                </div>
+              </div>
+            `
+          })
+          .join('')
+      }
+    }
+
+    if (this.activeTaskBoardTab === 'cron' && cronListEl) {
+      const crons = this.taskBoardData.cronjobs || []
+      if (crons.length === 0) {
+        cronListEl.innerHTML = `
+          <div class="task-board-empty">
+            <div class="empty-glyph">⏰</div>
+            <h3>No scheduled cronjobs</h3>
+            <p>No automated recurring schedules are currently detected.</p>
+          </div>
+        `
+      } else {
+        cronListEl.innerHTML = crons
+          .map((j) => {
+            const rawAgent = j.agent || 'fleet'
+            const agentName = j.agentName || (rawAgent.charAt(0).toUpperCase() + rawAgent.slice(1))
+            const color = getAgentColor(rawAgent)
+            const initial = getAgentInitial(agentName)
+            const humanCadence = formatCronHuman(j.schedule, j.tz)
+
+            return `
+              <div class="cron-card">
+                <div class="cron-card-header">
+                  <div class="task-agent-meta">
+                    <span class="agent-avatar-circle" style="background:${color}">${initial}</span>
+                    <div class="agent-labels">
+                      <span class="agent-name">${escapeHtml(agentName)}</span>
+                      <span class="agent-domain">${escapeHtml(j.domain || j.role || 'Automation')}</span>
+                    </div>
+                  </div>
+                  <div class="cron-schedule-pills">
+                    <code class="cron-code">${escapeHtml(j.schedule || '* * * * *')}</code>
+                    <span class="cron-human-badge">${escapeHtml(humanCadence)}</span>
+                  </div>
+                </div>
+                <div class="cron-card-title">${escapeHtml(j.name || 'Scheduled Job')}</div>
+                <div class="cron-card-desc">${escapeHtml(j.task || '')}</div>
+                <div class="cron-card-footer">
+                  <span class="harness-badge">${escapeHtml(j.source || 'Scheduler')}</span>
+                  <span class="cron-active-badge ${j.enabled ? 'active' : 'paused'}">● ${j.enabled ? 'ENABLED' : 'PAUSED'}</span>
+                </div>
+              </div>
+            `
+          })
+          .join('')
+      }
+    }
+  }
+
   openChat(thread, agent) {
     if (!thread) return
     this.chatThread = thread
@@ -1053,6 +1248,51 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 }
 
+function getAgentInitial(name) {
+  if (!name) return 'A'
+  return name.trim().charAt(0).toUpperCase()
+}
+
+function getAgentColor(name) {
+  const colors = [
+    '#c96442', '#4f9a63', '#4f7ec9', '#b8942a', '#8b5cc9', '#c94f8b',
+    '#3fa8a0', '#c97f4f', '#6f8f4f', '#5c7fc9', '#c95c5c', '#7f6fc9',
+  ]
+  let h = 0
+  for (let i = 0; i < (name || '').length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff
+  return colors[Math.abs(h) % colors.length]
+}
+
+function formatCronHuman(expr, tz = '') {
+  if (!expr) return 'No schedule'
+  const parts = expr.trim().split(/\s+/)
+  if (parts.length < 5) return expr
+
+  const [min, hour, dom, month, dow] = parts
+  let timeStr = ''
+
+  if (hour.startsWith('*/')) {
+    const step = hour.slice(2)
+    timeStr = `Every ${step} hours`
+  } else if (hour === '*' && min === '0') {
+    timeStr = 'Every hour'
+  } else if (!isNaN(Number(hour)) && !isNaN(Number(min))) {
+    const h = Number(hour)
+    const m = Number(min)
+    const ampm = h >= 12 ? 'PM' : 'AM'
+    const displayH = h % 12 === 0 ? 12 : h % 12
+    const displayM = m === 0 ? '00' : String(m).padStart(2, '0')
+    timeStr = `Daily at ${displayH}:${displayM} ${ampm}`
+  } else {
+    timeStr = `At ${hour}:${min}`
+  }
+
+  let cadence = timeStr
+  if (tz) cadence += ` (${tz.replace(/_/g, ' ')})`
+  return cadence
+}
+
+
 /** Status → the colour family the top-bar counters already use for it. */
 function statusClass(status) {
   if (status === 'working') return 'working'
@@ -1118,6 +1358,7 @@ const TEMPLATE = `
 <aside class="side panel">
   <header class="brandbar">
     <div class="brand"><i class="dot"></i>Bot Crossing</div>
+    <button class="btn icon ghost" id="btn-tasks" title="Colony Task Board (B)">${ICON.tasks}</button>
     <button class="btn icon ghost" id="btn-shot" title="Screenshot (P)">${ICON.camera}</button>
     <button class="btn icon ghost" id="btn-help" title="Help (?)">${ICON.help}</button>
     <button class="btn icon ghost" id="btn-hide" title="Hide all UI (H)">${ICON.eye}</button>
@@ -1236,6 +1477,42 @@ const TEMPLATE = `
 <div class="fps panel"></div>
 <div class="hint-pill panel"></div>
 
+<div class="task-board-modal" id="task-board-modal">
+  <div class="task-board-backdrop"></div>
+  <div class="task-board-window panel">
+    <div class="task-board-head">
+      <div class="task-board-title-group">
+        <div class="task-board-badge"><i class="task-dot"></i> TASKS</div>
+        <div class="task-board-title-text">
+          <h2>Colony Task Board</h2>
+          <span class="task-board-subtitle">In-flight agent tasks &amp; scheduled cronjobs</span>
+        </div>
+      </div>
+      <button class="btn icon ghost" id="btn-task-board-close" title="Close Task Board (Esc)">${ICON.close}</button>
+    </div>
+
+    <div class="task-board-tabs">
+      <button class="task-tab active" data-tab="tasks" id="tab-tasks-btn">
+        <span>In-Flight Tasks</span>
+        <span class="tab-count" id="task-count-badge">0</span>
+      </button>
+      <button class="task-tab" data-tab="cron" id="tab-cron-btn">
+        <span>Cronjobs Across All Agents</span>
+        <span class="tab-count" id="cron-count-badge">0</span>
+      </button>
+    </div>
+
+    <div class="task-board-content">
+      <div class="task-tab-pane active" id="pane-tasks">
+        <div class="task-list" id="task-board-task-list"></div>
+      </div>
+      <div class="task-tab-pane" id="pane-cron" style="display: none;">
+        <div class="cron-list" id="task-board-cron-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="help">
   <div class="sheet panel">
     <h2>Bot Crossing</h2>
@@ -1248,6 +1525,7 @@ const TEMPLATE = `
         <div class="k"><span>Zoom to cursor</span><kbd>scroll</kbd></div>
         <div class="k"><span>Move / zoom</span><kbd>arrows</kbd> <kbd>+ −</kbd></div>
         <div class="k"><span>Reset view</span><kbd>0</kbd></div>
+        <div class="k"><span>Task board</span><kbd>B</kbd></div>
         <div class="k"><span>Hide all UI</span><kbd>H</kbd> <kbd>${IS_MAC ? '⌘' : 'Ctrl'}\\</kbd></div>
         <div class="k"><span>Settings</span><kbd>S</kbd></div>
         <div class="k"><span>Screenshot</span><kbd>P</kbd></div>
