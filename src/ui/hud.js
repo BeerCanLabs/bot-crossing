@@ -972,6 +972,14 @@ export class Hud {
   }
 
   openShop() {
+    if (window.colonyRbac && window.colonyRbac.role === 'spectator') {
+      this.toast('🔒 Access Restricted: You are connected as a Spectator (read-only) and cannot access the Colony Depot.', 'err')
+      return
+    }
+    if (window.colonyRbac && !window.colonyRbac.isAdmin && window.colonyRbac.role !== 'admin') {
+      this.toast('🔒 Admin Privileges Required: Only Colony Administrators can access the Depot.', 'err')
+      return
+    }
     this.isShopOpen = true
     const modal = this.$('#shop-modal')
     if (modal) {
