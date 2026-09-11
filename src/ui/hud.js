@@ -366,6 +366,10 @@ export class Hud {
     on('#btn-close-settings', 'click', () => this.toggleSettings(false))
     on('#btn-tasks', 'click', () => this.toggleTaskBoard())
     on('#btn-task-board-close', 'click', () => this.closeTaskBoard())
+    on('#btn-task-board-locate', 'click', () => {
+      this.closeTaskBoard()
+      this.actions.focusBillboard?.()
+    })
     on('.task-board-backdrop', 'click', () => this.closeTaskBoard())
     const tbWindow = this.$('.task-board-window')
     if (tbWindow) tbWindow.addEventListener('click', (e) => e.stopPropagation())
@@ -1488,7 +1492,13 @@ const TEMPLATE = `
           <span class="task-board-subtitle">In-flight agent tasks &amp; scheduled cronjobs</span>
         </div>
       </div>
-      <button class="btn icon ghost" id="btn-task-board-close" title="Close Task Board (Esc)">${ICON.close}</button>
+      <div class="task-board-head-actions">
+        <button class="btn ghost small" id="btn-task-board-locate" title="Fly camera to the billboard next to the spaceship">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px; vertical-align: -2px;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>
+          <span>Locate Billboard</span>
+        </button>
+        <button class="btn icon ghost" id="btn-task-board-close" title="Close Task Board (Esc)">${ICON.close}</button>
+      </div>
     </div>
 
     <div class="task-board-tabs">

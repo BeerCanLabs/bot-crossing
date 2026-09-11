@@ -142,6 +142,13 @@ const actions = {
     if (t) openThread(t)
   },
 
+  focusBillboard: () => {
+    if (colony.taskBoard) {
+      rig.focus(colony.taskBoard.position, { distance: 18 })
+      hud.hint('Task Board Billboard — Spaceport Apron')
+    }
+  },
+
   openChatForAgent: (agentName) => {
     const t = threads.find((x) => (x.ref?.agent || x.id.replace(/^submind:/, '')) === agentName)
     if (t) hud.openChat(t, colony.agentFor(t.id))
@@ -609,7 +616,8 @@ window.addEventListener('keydown', (e) => {
       break
     case 'b':
     case 'B':
-      hud.toggleTaskBoard()
+      if (e.shiftKey) actions.focusBillboard()
+      else hud.toggleTaskBoard()
       break
     case 'v':
     case 'V':

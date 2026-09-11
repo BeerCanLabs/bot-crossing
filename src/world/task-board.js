@@ -35,13 +35,13 @@ export class TaskBoardBillboard {
     this.raycaster = new THREE.Raycaster()
 
     // Billboard world offset relative to ship position:
-    // Placed next to the spaceship landing apron, angled toward the colony center & camera.
-    this.relOffset = new THREE.Vector3(5.3, 0, 5.0)
+    // Placed right beside the spaceship ramp landing zone at the apron edge.
+    this.relOffset = new THREE.Vector3(7.0, 0, 4.2)
     this.position = new THREE.Vector3().addVectors(shipPos, this.relOffset)
     this.group.position.copy(this.position)
 
-    // Turned ~35 degrees toward the colony center & isometric camera view (+X, +Z)
-    this.group.rotation.y = -Math.PI * 0.22
+    // Angled ~50 degrees to face squarely toward the default isometric camera and colony center
+    this.group.rotation.y = Math.PI * 0.28
 
     this._setupCanvas()
     this._buildMesh()
@@ -56,7 +56,8 @@ export class TaskBoardBillboard {
 
   _positionOnTerrain() {
     const y = terrainHeight(this.position.x, this.position.z, this.planet)
-    this.group.position.y = y
+    this.position.y = y
+    this.group.position.set(this.position.x, y, this.position.z)
   }
 
   _setupCanvas() {
@@ -74,8 +75,20 @@ export class TaskBoardBillboard {
   }
 
   _buildMesh() {
+    // 0. Foundation pad / anchor circle on ground
+    const foundationGeo = new THREE.CylinderGeometry(2.2, 2.4, 0.12, 16)
+    const foundationMat = new THREE.MeshStandardMaterial({
+      color: 0x22252c,
+      roughness: 0.8,
+      metalness: 0.4,
+    })
+    const foundation = new THREE.Mesh(foundationGeo, foundationMat)
+    foundation.position.set(0, 0.06, 0)
+    foundation.receiveShadow = true
+    this.group.add(foundation)
+
     // 1. Structural pylons (legs)
-    const legGeo = new THREE.CylinderGeometry(0.09, 0.11, 4.2, 8)
+    const legGeo = new THREE.CylinderGeometry(0.1, 0.12, 4.2, 8)
     const legMat = new THREE.MeshStandardMaterial({
       color: METAL_COLOR,
       roughness: 0.6,
@@ -83,29 +96,29 @@ export class TaskBoardBillboard {
     })
 
     const leftLeg = new THREE.Mesh(legGeo, legMat)
-    leftLeg.position.set(-1.25, 2.0, 0)
+    leftLeg.position.set(-1.3, 2.0, 0)
     leftLeg.castShadow = true
     leftLeg.receiveShadow = true
     this.group.add(leftLeg)
 
     const rightLeg = new THREE.Mesh(legGeo, legMat)
-    rightLeg.position.set(1.25, 2.0, 0)
+    rightLeg.position.set(1.3, 2.0, 0)
     rightLeg.castShadow = true
     rightLeg.receiveShadow = true
     this.group.add(rightLeg)
 
     // Footpads resting on the ground
-    const padGeo = new THREE.CylinderGeometry(0.28, 0.35, 0.2, 10)
+    const padGeo = new THREE.CylinderGeometry(0.32, 0.4, 0.22, 10)
     const leftPad = new THREE.Mesh(padGeo, legMat)
-    leftPad.position.set(-1.25, 0.1, 0)
+    leftPad.position.set(-1.3, 0.11, 0)
     this.group.add(leftPad)
 
     const rightPad = new THREE.Mesh(padGeo, legMat)
-    rightPad.position.set(1.25, 0.1, 0)
+    rightPad.position.set(1.3, 0.11, 0)
     this.group.add(rightPad)
 
     // X-truss cross bracing under the billboard
-    const braceGeo = new THREE.CylinderGeometry(0.04, 0.04, 2.7, 6)
+    const braceGeo = new THREE.CylinderGeometry(0.045, 0.045, 2.8, 6)
     const brace1 = new THREE.Mesh(braceGeo, legMat)
     brace1.position.set(0, 1.25, 0)
     brace1.rotation.z = 0.82
@@ -117,9 +130,9 @@ export class TaskBoardBillboard {
     this.group.add(brace2)
 
     // 2. Main billboard display housing (box)
-    const housingWidth = 3.5
-    const housingHeight = 2.1
-    const housingDepth = 0.18
+    const housingWidth = 3.6
+    const housingHeight = 2.2
+    const housingDepth = 0.22
     const housingGeo = new THREE.BoxGeometry(housingWidth, housingHeight, housingDepth)
     this.housingMat = new THREE.MeshStandardMaterial({
       color: HOUSING_COLOR,
@@ -128,38 +141,57 @@ export class TaskBoardBillboard {
     })
 
     this.hitMesh = new THREE.Mesh(housingGeo, this.housingMat)
-    this.hitMesh.position.set(0, 2.85, 0)
+    this.hitMesh.position.set(0, 2.9, 0)
     this.hitMesh.castShadow = true
     this.hitMesh.receiveShadow = true
     this.group.add(this.hitMesh)
 
-    // Accent trim frame around the screen
-    const trimGeo = new THREE.BoxGeometry(housingWidth + 0.06, housingHeight + 0.06, 0.04)
+    // Accent trim frame around the screen (front and back)
+    const trimGeo = new THREE.BoxGeometry(housingWidth + 0.08, housingHeight + 0.08, 0.04)
     this.trimMat = new THREE.MeshStandardMaterial({
       color: FRAME_TRIM,
       roughness: 0.4,
       metalness: 0.5,
     })
-    const trimMesh = new THREE.Mesh(trimGeo, this.trimMat)
-    trimMesh.position.set(0, 2.85, 0.08)
-    this.group.add(trimMesh)
 
-    // 3. Electronic Screen Face (Front)
-    const screenGeo = new THREE.PlaneGeometry(3.3, 1.9)
+    const frontTrim = new THREE.Mesh(trimGeo, this.trimMat)
+    frontTrim.position.set(0, 2.9, 0.1)
+    this.group.add(frontTrim)
+
+    const backTrim = new THREE.Mesh(trimGeo, this.trimMat)
+    backTrim.position.set(0, 2.9, -0.1)
+    this.group.add(backTrim)
+
+    // 3. Electronic Screen Face (Double-sided: Front & Back meshes for perfect readability from any angle)
+    const screenGeo = new THREE.PlaneGeometry(3.4, 2.0)
     this.screenMat = new THREE.MeshBasicMaterial({
       map: this.texture,
       toneMapped: false,
+      side: THREE.DoubleSide,
     })
-    this.screenMesh = new THREE.Mesh(screenGeo, this.screenMat)
-    this.screenMesh.position.set(0, 2.85, 0.105)
-    this.group.add(this.screenMesh)
 
-    // 4. Overhead luminaire hood bar
-    const hoodGeo = new THREE.BoxGeometry(3.6, 0.08, 0.4)
-    const hoodMesh = new THREE.Mesh(hoodGeo, legMat)
-    hoodMesh.position.set(0, 3.96, 0.22)
-    hoodMesh.rotation.x = 0.25
-    this.group.add(hoodMesh)
+    // Front screen face
+    this.screenMeshFront = new THREE.Mesh(screenGeo, this.screenMat)
+    this.screenMeshFront.position.set(0, 2.9, 0.125)
+    this.group.add(this.screenMeshFront)
+
+    // Back screen face (rotated 180° so text/script reads properly from the rear too)
+    this.screenMeshBack = new THREE.Mesh(screenGeo, this.screenMat)
+    this.screenMeshBack.position.set(0, 2.9, -0.125)
+    this.screenMeshBack.rotation.y = Math.PI
+    this.group.add(this.screenMeshBack)
+
+    // 4. Overhead luminaire hood bars (Front and Back)
+    const hoodGeo = new THREE.BoxGeometry(3.7, 0.09, 0.38)
+    const frontHood = new THREE.Mesh(hoodGeo, legMat)
+    frontHood.position.set(0, 4.05, 0.24)
+    frontHood.rotation.x = 0.25
+    this.group.add(frontHood)
+
+    const backHood = new THREE.Mesh(hoodGeo, legMat)
+    backHood.position.set(0, 4.05, -0.24)
+    backHood.rotation.x = -0.25
+    this.group.add(backHood)
 
     // Lamp emitters
     const lampGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.04, 8)
@@ -168,24 +200,33 @@ export class TaskBoardBillboard {
       toneMapped: true,
     })
     for (let i = 0; i < 3; i++) {
-      const lamp = new THREE.Mesh(lampGeo, this.lampMat)
-      lamp.rotation.x = Math.PI / 2
-      lamp.position.set(-1.1 + i * 1.1, 3.92, 0.32)
-      this.group.add(lamp)
+      const x = -1.1 + i * 1.1
+
+      const frontLamp = new THREE.Mesh(lampGeo, this.lampMat)
+      frontLamp.rotation.x = Math.PI / 2
+      frontLamp.position.set(x, 4.01, 0.34)
+      this.group.add(frontLamp)
+
+      const backLamp = new THREE.Mesh(lampGeo, this.lampMat)
+      backLamp.rotation.x = -Math.PI / 2
+      backLamp.position.set(x, 4.01, -0.34)
+      this.group.add(backLamp)
     }
 
-    // 5. Rear structural ribs & junction box (back of billboard)
-    const ribGeo = new THREE.BoxGeometry(3.2, 0.06, 0.06)
-    for (let y = 2.2; y <= 3.5; y += 0.6) {
-      const rib = new THREE.Mesh(ribGeo, legMat)
-      rib.position.set(0, y, -0.11)
-      this.group.add(rib)
-    }
+    // 5. Signal Antenna & Pulsing Beacon at the top
+    const antennaGeo = new THREE.CylinderGeometry(0.03, 0.05, 1.1, 8)
+    const antennaMesh = new THREE.Mesh(antennaGeo, legMat)
+    antennaMesh.position.set(0, 4.6, 0)
+    this.group.add(antennaMesh)
 
-    const juncBoxGeo = new THREE.BoxGeometry(0.4, 0.5, 0.15)
-    const juncBox = new THREE.Mesh(juncBoxGeo, legMat)
-    juncBox.position.set(1.0, 2.3, -0.16)
-    this.group.add(juncBox)
+    const beaconGeo = new THREE.SphereGeometry(0.18, 12, 10)
+    this.beaconMat = new THREE.MeshBasicMaterial({
+      color: 0x00e5ff,
+      toneMapped: false,
+    })
+    this.beacon = new THREE.Mesh(beaconGeo, this.beaconMat)
+    this.beacon.position.set(0, 5.18, 0)
+    this.group.add(this.beacon)
   }
 
   renderCanvas() {
@@ -402,15 +443,22 @@ export class TaskBoardBillboard {
   }
 
   pick(camera, ndcX, ndcY) {
-    if (!this.hitMesh) return false
+    if (!this.group) return false
     this.raycaster.setFromCamera({ x: ndcX, y: ndcY }, camera)
-    const hits = this.raycaster.intersectObject(this.hitMesh, true)
+    const hits = this.raycaster.intersectObjects(this.group.children, true)
     return hits.length > 0
   }
 
   update(dt, elapsed, night) {
+    // Top antenna beacon double-pulse strobe
+    const t = elapsed % 1.5
+    const strobe = t < 0.09 || (t > 0.20 && t < 0.29) ? 3.5 : 0.35
+    if (this.beaconMat) {
+      this.beaconMat.color.setRGB(0.05 * strobe, 2.0 * strobe, 2.4 * strobe)
+    }
+
     // Overhead lamps brighten slightly after dark
-    const gain = 0.5 + night * 1.8
+    const gain = 0.6 + night * 1.8
     if (this.lampMat) {
       this.lampMat.color.setRGB(0.55 * gain, 0.85 * gain, 1.1 * gain)
     }
