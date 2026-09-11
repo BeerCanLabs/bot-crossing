@@ -49,6 +49,7 @@ const ICON = {
   send: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`,
   trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
   tasks: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 12l2 2 4-4"/><path d="M9 7h6M9 17h6"/></svg>`,
+  shop: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`,
 }
 
 const STAT_DEFS = [
@@ -373,6 +374,18 @@ export class Hud {
     on('.task-board-backdrop', 'click', () => this.closeTaskBoard())
     const tbWindow = this.$('.task-board-window')
     if (tbWindow) tbWindow.addEventListener('click', (e) => e.stopPropagation())
+
+    on('#btn-shop', 'click', () => this.toggleShop())
+    on('#btn-shop-close', 'click', () => this.closeShop())
+    on('#btn-shop-locate', 'click', () => {
+      this.closeShop()
+      this.actions.focusShop?.()
+    })
+    on('#shop-backdrop', 'click', () => this.closeShop())
+
+    on('#tab-shop-installed-btn', 'click', () => this.switchShopTab('installed'))
+    on('#tab-shop-catalog-btn', 'click', () => this.switchShopTab('catalog'))
+    on('#tab-shop-rbac-btn', 'click', () => this.switchShopTab('rbac'))
 
     on('#tab-tasks-btn', 'click', () => this.switchTaskBoardTab('tasks'))
     on('#tab-cron-btn', 'click', () => this.switchTaskBoardTab('cron'))
@@ -928,6 +941,391 @@ export class Hud {
     }
   }
 
+  setAuthBadge(data) {
+    const brandbar = this.$('.brandbar')
+    if (!brandbar || document.getElementById('user-rbac-pill')) return
+    const pill = document.createElement('div')
+    pill.id = 'user-rbac-pill'
+    pill.style.cssText = `
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid ${data.role === 'admin' ? '#00e5ff' : data.role === 'agent_manager' ? '#ffa726' : '#94a3b8'};
+      color: ${data.role === 'admin' ? '#00e5ff' : data.role === 'agent_manager' ? '#ffa726' : '#94a3b8'};
+      margin-left: 8px;
+      font-family: monospace;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+    `
+    pill.title = `Logged in as ${data.user?.email || 'Guest'} (${data.role.toUpperCase()}) — Click to open RBAC`
+    pill.innerHTML = `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;"></span><span>${data.user?.email?.split('@')[0] || 'User'}</span><span style="opacity:0.6;font-size:9px;">[${data.role}]</span>`
+    pill.addEventListener('click', () => {
+      this.openShop()
+      this.switchShopTab('rbac')
+    })
+    const tasksBtn = this.$('#btn-tasks')
+    if (tasksBtn) brandbar.insertBefore(pill, tasksBtn)
+    else brandbar.appendChild(pill)
+  }
+
+  openShop() {
+    this.isShopOpen = true
+    const modal = this.$('#shop-modal')
+    if (modal) {
+      modal.classList.add('open')
+      this.switchShopTab(this.activeShopTab || 'installed')
+    }
+  }
+
+  closeShop() {
+    this.isShopOpen = false
+    const modal = this.$('#shop-modal')
+    if (modal) {
+      modal.classList.remove('open')
+    }
+  }
+
+  toggleShop(force) {
+    const next = force ?? !this.isShopOpen
+    if (next) this.openShop()
+    else this.closeShop()
+  }
+
+  switchShopTab(tab) {
+    this.activeShopTab = tab
+    const tabInstalledBtn = this.$('#tab-shop-installed-btn')
+    const tabCatalogBtn = this.$('#tab-shop-catalog-btn')
+    const tabRbacBtn = this.$('#tab-shop-rbac-btn')
+    const paneInstalled = this.$('#pane-shop-installed')
+    const paneCatalog = this.$('#pane-shop-catalog')
+    const paneRbac = this.$('#pane-shop-rbac')
+
+    tabInstalledBtn?.classList.toggle('active', tab === 'installed')
+    tabCatalogBtn?.classList.toggle('active', tab === 'catalog')
+    tabRbacBtn?.classList.toggle('active', tab === 'rbac')
+
+    if (paneInstalled) paneInstalled.style.display = tab === 'installed' ? 'block' : 'none'
+    if (paneCatalog) paneCatalog.style.display = tab === 'catalog' ? 'block' : 'none'
+    if (paneRbac) paneRbac.style.display = tab === 'rbac' ? 'block' : 'none'
+
+    if (tab === 'installed') this.renderShopInstalled()
+    else if (tab === 'catalog') this.renderShopCatalog()
+    else if (tab === 'rbac') this.renderShopRbac()
+  }
+
+  async renderShopInstalled() {
+    const list = this.$('#shop-installed-list')
+    if (!list) return
+    list.innerHTML = `<div style="color: #94a3b8;">Loading installed plugins...</div>`
+    try {
+      const res = await fetch('/api/plugins')
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      const installed = Object.values(data.installed || {})
+
+      const countBadge = this.$('#shop-installed-count')
+      if (countBadge) countBadge.textContent = String(installed.length)
+
+      if (installed.length === 0) {
+        list.innerHTML = `<div style="color: #94a3b8; padding: 24px; text-align: center;">No plugins installed. Check the Addon Catalog!</div>`
+        return
+      }
+
+      list.innerHTML = installed.map((p) => `
+        <div style="background: rgba(22, 27, 38, 0.85); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 16px; display: flex; justify-content: space-between; align-items: center; gap: 16px;">
+          <div style="display: flex; gap: 14px; align-items: center;">
+            <div style="font-size: 28px; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.04); border-radius: 8px;">
+              ${p.id === 'billboard' ? '📋' : p.id === 'rbac' ? '🛡️' : '🔌'}
+            </div>
+            <div>
+              <div style="font-size: 15px; font-weight: 600; color: #f1f5f9; display: flex; align-items: center; gap: 8px;">
+                ${escapeHtml(p.name)}
+                <span style="font-size: 10px; font-family: monospace; padding: 2px 6px; border-radius: 4px; background: ${p.enabled ? 'rgba(74,222,128,0.15)' : 'rgba(148,163,184,0.15)'}; color: ${p.enabled ? '#4ade80' : '#94a3b8'};">
+                  ${p.enabled ? 'ACTIVE' : 'DISABLED'}
+                </span>
+              </div>
+              <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
+                ${p.id === 'billboard' ? '3D Task Board Billboard & Work Tracker' : p.id === 'rbac' ? 'Multi-user role access control & Cloudflare Zero Trust' : 'Colony Extension Plugin'}
+              </div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            ${p.id === 'billboard' ? `<button class="btn small ghost" id="btn-cfg-billboard-link">Configure ⚙️</button>` : ''}
+            ${p.id === 'rbac' ? `<button class="btn small ghost" id="btn-cfg-rbac-link">Manage Users 👤</button>` : ''}
+            <button class="btn small ${p.enabled ? 'danger' : 'primary'}" data-toggle-plugin="${p.id}" data-enabled="${p.enabled ? 'true' : 'false'}">
+              ${p.enabled ? 'Disable' : 'Enable'}
+            </button>
+          </div>
+        </div>
+      `).join('')
+
+      list.querySelectorAll('button[data-toggle-plugin]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const id = btn.dataset.togglePlugin
+          const currentlyEnabled = btn.dataset.enabled === 'true'
+          btn.disabled = true
+          btn.textContent = 'Updating...'
+          try {
+            const toggleRes = await fetch('/api/plugins/toggle', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id, enabled: !currentlyEnabled })
+            })
+            if (toggleRes.ok) {
+              if (id === 'billboard' && window.botCrossing?.colony) {
+                window.botCrossing.colony.setTaskBoardVisible(!currentlyEnabled)
+              }
+              this.renderShopInstalled()
+            }
+          } catch (err) {
+            alert('Failed to toggle plugin: ' + err.message)
+          }
+        })
+      })
+
+      list.querySelector('#btn-cfg-billboard-link')?.addEventListener('click', () => {
+        this.closeShop()
+        this.openTaskBoard()
+        this.switchTaskBoardTab('config')
+      })
+
+      list.querySelector('#btn-cfg-rbac-link')?.addEventListener('click', () => {
+        this.switchShopTab('rbac')
+      })
+
+    } catch (err) {
+      list.innerHTML = `<div style="color: #ef4444;">Failed to load plugins: ${escapeHtml(err.message)}</div>`
+    }
+  }
+
+  async renderShopCatalog() {
+    const list = this.$('#shop-catalog-list')
+    if (!list) return
+    list.innerHTML = `<div style="color: #94a3b8;">Loading plugin registry...</div>`
+    try {
+      const res = await fetch('/api/plugins')
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      const catalog = data.catalog || []
+
+      list.innerHTML = `
+        <div style="font-size: 13px; color: #94a3b8; margin-bottom: 8px;">
+          Official plugins from <a href="https://github.com/BeerCanLabs/bot-crossing-plugins" target="_blank" style="color: #ffa726; text-decoration: underline;">BeerCanLabs/bot-crossing-plugins</a>.
+        </div>
+        ${catalog.map((cat) => `
+          <div style="background: rgba(22, 27, 38, 0.85); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 16px; display: flex; justify-content: space-between; align-items: center; gap: 16px;">
+            <div style="display: flex; gap: 14px; align-items: center;">
+              <div style="font-size: 28px; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.04); border-radius: 8px;">
+                ${cat.icon || '🔌'}
+              </div>
+              <div>
+                <div style="font-size: 15px; font-weight: 600; color: #f1f5f9; display: flex; align-items: center; gap: 8px;">
+                  ${escapeHtml(cat.name)}
+                  <span style="font-size: 10px; font-family: monospace; padding: 2px 6px; border-radius: 4px; background: rgba(255,167,38,0.15); color: #ffa726;">
+                    v${cat.version}
+                  </span>
+                </div>
+                <div style="font-size: 12px; color: #94a3b8; margin-top: 4px; max-width: 480px;">
+                  ${escapeHtml(cat.description)}
+                </div>
+              </div>
+            </div>
+            <div>
+              <span style="font-size: 12px; font-weight: 600; color: #4ade80; background: rgba(74,222,128,0.12); padding: 5px 12px; border-radius: 6px;">
+                ✓ AVAILABLE
+              </span>
+            </div>
+          </div>
+        `).join('')}
+      `
+    } catch (err) {
+      list.innerHTML = `<div style="color: #ef4444;">Failed to load catalog: ${escapeHtml(err.message)}</div>`
+    }
+  }
+
+  async renderShopRbac() {
+    const pane = this.$('#shop-rbac-list')
+    if (!pane) return
+    pane.innerHTML = `<div style="color: #94a3b8;">Loading RBAC settings...</div>`
+
+    try {
+      const [meRes, usersRes] = await Promise.all([
+        fetch('/api/rbac/me'),
+        fetch('/api/rbac/users')
+      ])
+
+      if (!meRes.ok) {
+        pane.innerHTML = `<div style="color: #94a3b8; padding: 20px;">RBAC is currently disabled or unreachable. Enable it in the Installed Addons tab.</div>`
+        return
+      }
+
+      const me = await meRes.json()
+      if (!usersRes.ok) {
+        pane.innerHTML = `
+          <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 16px; color: #fca5a5;">
+            <strong>Access Restricted:</strong> You are logged in as <code>${me.user?.email}</code> with role <code>${me.role}</code>. Only administrators can view and edit user roles.
+          </div>
+        `
+        return
+      }
+
+      const { defaultRole, users } = await usersRes.json()
+      const userList = Object.entries(users || {})
+      const availableAgents = ['sm-castle', 'sm-donna', 'sm-archie', 'sm-switch', 'sm-geordi', 'sm-draftsman']
+
+      pane.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px;">
+          <div>
+            <div style="font-size: 14px; font-weight: 600; color: #f1f5f9;">Current User Identity</div>
+            <div style="font-size: 12px; color: #38bdf8; font-family: monospace; margin-top: 2px;">
+              ${escapeHtml(me.user?.email)} <span style="color: #ffa726;">(${me.role.toUpperCase()})</span>
+            </div>
+          </div>
+          <div style="font-size: 12px; color: #94a3b8;">
+            Default Unregistered Role: <strong style="color: #e2e8f0; text-transform: capitalize;">${escapeHtml(defaultRole)}</strong>
+          </div>
+        </div>
+
+        <div style="margin-top: 8px;">
+          <h3 style="font-size: 14px; color: #f1f5f9; margin-bottom: 10px;">User Role Directory (3 Roles)</h3>
+          <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+              <thead>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left; color: #94a3b8;">
+                  <th style="padding: 8px;">User Email</th>
+                  <th style="padding: 8px;">Role</th>
+                  <th style="padding: 8px;">Assigned Agents</th>
+                  <th style="padding: 8px; text-align: right;">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${userList.map(([email, info]) => `
+                  <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <td style="padding: 10px 8px; font-family: monospace; color: #e2e8f0;">${escapeHtml(email)}</td>
+                    <td style="padding: 10px 8px;">
+                      <select class="user-role-select" data-email="${escapeHtml(email)}" style="background: #0f172a; border: 1px solid rgba(80,200,255,0.3); color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
+                        <option value="admin" ${info.role === 'admin' ? 'selected' : ''}>Admin (Full Control)</option>
+                        <option value="agent_manager" ${info.role === 'agent_manager' ? 'selected' : ''}>Agent Manager</option>
+                        <option value="spectator" ${info.role === 'spectator' ? 'selected' : ''}>Spectator (Read-Only)</option>
+                      </select>
+                    </td>
+                    <td style="padding: 10px 8px;">
+                      ${info.role === 'admin' ? '<span style="color: #00e5ff;">All Agents (*)</span>' : info.role === 'spectator' ? '<span style="color: #64748b;">None (Read-Only)</span>' : `
+                        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                          ${availableAgents.map((ag) => `
+                            <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: #cbd5e1; cursor: pointer;">
+                              <input type="checkbox" class="agent-check" data-email="${escapeHtml(email)}" data-agent="${ag}" ${(info.allowedAgents || []).includes(ag) ? 'checked' : ''} />
+                              ${ag.replace(/^sm-/, '')}
+                            </label>
+                          `).join('')}
+                        </div>
+                      `}
+                    </td>
+                    <td style="padding: 10px 8px; text-align: right;">
+                      <button class="btn small primary btn-save-user" data-email="${escapeHtml(email)}" style="margin-right: 6px;">Save</button>
+                      <button class="btn small danger btn-del-user" data-email="${escapeHtml(email)}">${ICON.trash || 'Delete'}</button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 14px; margin-top: 12px;">
+          <h4 style="font-size: 13px; color: #f1f5f9; margin-bottom: 10px;">Add New User</h4>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+            <input type="email" id="new-user-email" placeholder="user@domain.com" style="background: #0f172a; border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; flex: 1; min-width: 200px;" />
+            <select id="new-user-role" style="background: #0f172a; border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px;">
+              <option value="spectator">Spectator (Read-Only)</option>
+              <option value="agent_manager">Agent Manager</option>
+              <option value="admin">Admin</option>
+            </select>
+            <button class="btn small primary" id="btn-add-user">Add User</button>
+          </div>
+        </div>
+      `
+
+      // Wire save buttons
+      pane.querySelectorAll('.btn-save-user').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const email = btn.dataset.email
+          const roleSelect = pane.querySelector(`.user-role-select[data-email="${email}"]`)
+          const role = roleSelect?.value || 'spectator'
+          const checks = pane.querySelectorAll(`.agent-check[data-email="${email}"]:checked`)
+          const allowedAgents = Array.from(checks).map((c) => c.dataset.agent)
+
+          btn.disabled = true
+          btn.textContent = 'Saving...'
+          try {
+            const saveRes = await fetch('/api/rbac/users', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email, role, allowedAgents })
+            })
+            if (saveRes.ok) {
+              this.renderShopRbac()
+            } else {
+              const err = await saveRes.json()
+              alert('Error: ' + err.error)
+              btn.disabled = false
+              btn.textContent = 'Save'
+            }
+          } catch (e) {
+            alert('Failed: ' + e.message)
+            btn.disabled = false
+            btn.textContent = 'Save'
+          }
+        })
+      })
+
+      // Wire delete buttons
+      pane.querySelectorAll('.btn-del-user').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const email = btn.dataset.email
+          if (!confirm(`Revoke all access for ${email}?`)) return
+          try {
+            await fetch(`/api/rbac/users?email=${encodeURIComponent(email)}`, { method: 'DELETE' })
+            this.renderShopRbac()
+          } catch (e) {
+            alert('Failed: ' + e.message)
+          }
+        })
+      })
+
+      // Wire Add User
+      pane.querySelector('#btn-add-user')?.addEventListener('click', async () => {
+        const emailInput = pane.querySelector('#new-user-email')
+        const roleSelect = pane.querySelector('#new-user-role')
+        const email = emailInput?.value?.trim()
+        const role = roleSelect?.value || 'spectator'
+        if (!email) return alert('Please enter a valid user email')
+
+        try {
+          const addRes = await fetch('/api/rbac/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, role, allowedAgents: [] })
+          })
+          if (addRes.ok) {
+            this.renderShopRbac()
+          } else {
+            const err = await addRes.json()
+            alert('Error: ' + err.error)
+          }
+        } catch (e) {
+          alert('Failed: ' + e.message)
+        }
+      })
+
+    } catch (err) {
+      pane.innerHTML = `<div style="color: #ef4444;">Failed to load RBAC: ${escapeHtml(err.message)}</div>`
+    }
+  }
+
   updateTaskBoard(data) {
     if (!data) return
     this.taskBoardData = data
@@ -1219,10 +1617,25 @@ export class Hud {
 
     this.renderChatMessages()
 
+    const canChat = !window.colonyRbac || window.colonyRbac.canChatWith(agentName)
     const input = this.$('#chat-input')
+    const sendBtn = this.$('#btn-chat-send')
+
     if (input) {
-      input.placeholder = `Talk to ${title}...`
-      setTimeout(() => input.focus(), 60)
+      if (!canChat) {
+        input.disabled = true
+        input.placeholder = window.colonyRbac?.role === 'spectator'
+          ? 'Spectator role: Chat is disabled (read-only)'
+          : `Not authorized to message ${title}`
+      } else {
+        input.disabled = false
+        input.placeholder = `Talk to ${title}...`
+        setTimeout(() => input.focus(), 60)
+      }
+    }
+    if (sendBtn) {
+      sendBtn.disabled = !canChat
+      sendBtn.style.opacity = canChat ? '1' : '0.4'
     }
   }
 
@@ -1288,6 +1701,10 @@ export class Hud {
   async sendCurrentChatMessage() {
     const input = this.$('#chat-input')
     if (!input || this.isSending) return
+    if (window.colonyRbac && !window.colonyRbac.canChatWith(this.chatAgentName)) {
+      this.toast('Access Denied: You do not have permission to message this agent', 'err')
+      return
+    }
     const text = input.value.trim()
     if (!text) return
 
@@ -1505,6 +1922,7 @@ const TEMPLATE = `
   <header class="brandbar">
     <div class="brand"><i class="dot"></i>Bot Crossing</div>
     <button class="btn icon ghost" id="btn-tasks" title="Colony Task Board (B)">${ICON.tasks}</button>
+    <button class="btn icon ghost" id="btn-shop" title="Colony Depot & Plugins (D)">${ICON.shop}</button>
     <button class="btn icon ghost" id="btn-shot" title="Screenshot (P)">${ICON.camera}</button>
     <button class="btn icon ghost" id="btn-help" title="Help (?)">${ICON.help}</button>
     <button class="btn icon ghost" id="btn-hide" title="Hide all UI (H)">${ICON.eye}</button>
@@ -1666,6 +2084,53 @@ const TEMPLATE = `
       </div>
       <div class="task-tab-pane" id="pane-config" style="display: none;">
         <div class="config-list" id="task-board-config-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="task-board-modal" id="shop-modal">
+  <div class="task-board-backdrop" id="shop-backdrop"></div>
+  <div class="task-board-window panel" style="box-shadow: 0 24px 64px rgba(0, 0, 0, 0.75), 0 0 32px rgba(255, 167, 38, 0.2);">
+    <div class="task-board-head">
+      <div class="task-board-title-group">
+        <div class="task-board-badge" style="border-color: #ffa726; color: #ffa726;"><i class="task-dot" style="background: #ffa726;"></i> THE DEPOT</div>
+        <div class="task-board-title-text">
+          <h2>Colony Workshop &amp; Depot</h2>
+          <span class="task-board-subtitle">Install, toggle, and configure Colony plugins &amp; RBAC security</span>
+        </div>
+      </div>
+      <div class="task-board-head-actions">
+        <button class="btn ghost small" id="btn-shop-locate" title="Fly camera to the Depot kiosk next to the spaceship">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px; vertical-align: -2px;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>
+          <span>Locate Depot</span>
+        </button>
+        <button class="btn icon ghost" id="btn-shop-close" title="Close Depot (Esc)">${ICON.close}</button>
+      </div>
+    </div>
+
+    <div class="task-board-tabs">
+      <button class="task-tab active" data-tab="installed" id="tab-shop-installed-btn">
+        <span>Installed Addons</span>
+        <span class="tab-count" id="shop-installed-count">2</span>
+      </button>
+      <button class="task-tab" data-tab="catalog" id="tab-shop-catalog-btn">
+        <span>Addon Catalog</span>
+      </button>
+      <button class="task-tab" data-tab="rbac" id="tab-shop-rbac-btn">
+        <span>RBAC &amp; Access 🛡️</span>
+      </button>
+    </div>
+
+    <div class="task-board-content" style="overflow-y: auto; max-height: calc(100vh - 220px);">
+      <div class="task-tab-pane active" id="pane-shop-installed">
+        <div class="installed-plugins-list" id="shop-installed-list" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;"></div>
+      </div>
+      <div class="task-tab-pane" id="pane-shop-catalog" style="display: none;">
+        <div class="catalog-plugins-list" id="shop-catalog-list" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;"></div>
+      </div>
+      <div class="task-tab-pane" id="pane-shop-rbac" style="display: none;">
+        <div class="rbac-config-pane" id="shop-rbac-list" style="padding: 20px; display: flex; flex-direction: column; gap: 18px;"></div>
       </div>
     </div>
   </div>

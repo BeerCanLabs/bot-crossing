@@ -149,6 +149,13 @@ const actions = {
     }
   },
 
+  focusShop: () => {
+    if (colony.shopKiosk) {
+      rig.focus(colony.shopKiosk.position, { distance: 18 })
+      hud.hint('Colony Depot / Workshop — Spaceport Apron')
+    }
+  },
+
   openChatForAgent: (agentName) => {
     const t = threads.find((x) => (x.ref?.agent || x.id.replace(/^submind:/, '')) === agentName)
     if (t) hud.openChat(t, colony.agentFor(t.id))
@@ -329,6 +336,28 @@ const sideWidth = () => (window.innerWidth <= 820 ? 0 : 334)
 hud.setSideWidth(sideWidth())
 window.addEventListener('resize', () => hud.setSideWidth(sideWidth()))
 
+// Initialize Colony RBAC user session & HUD badge
+;(async function initColonyAuth() {
+  try {
+    const res = await fetch('/api/rbac/me')
+    if (res.ok) {
+      const data = await res.json()
+      window.colonyRbac = {
+        ...data,
+        canChatWith(agentName) {
+          if (data.isAdmin || data.role === 'admin') return true
+          if (data.role === 'agent_manager') {
+            const list = data.allowedAgents || []
+            return list.includes('*') || list.includes(agentName)
+          }
+          return false // Spectator
+        }
+      }
+      hud.setAuthBadge(data)
+    }
+  } catch {}
+})()
+
 // ── selection ─────────────────────────────────────────────────────────────────────────
 
 function select(id, { fly = false } = {}) {
@@ -493,13 +522,16 @@ engine.canvas.addEventListener('pointermove', (e) => {
   const billboardHit = colony.pickBillboard(p.x, p.y)
   colony.setBillboardHover(billboardHit)
 
+  const shopHit = colony.pickShop(p.x, p.y)
+  colony.setShopHover(shopHit)
+
   const agent = colony.pick(p.x, p.y, p.aspect)
   hoverId = agent?.id ?? null
   colony.astronauts.setHover(agent)
   // Pointing at a quiet plot is what makes its name appear.
   const plot = plotUnder(e, p)
   colony.setHoveredPlot(plot)
-  engine.canvas.style.cursor = billboardHit || agent || plot ? 'pointer' : 'grab'
+  engine.canvas.style.cursor = billboardHit || shopHit || agent || plot ? 'pointer' : 'grab'
 })
 
 /**
@@ -527,6 +559,12 @@ engine.canvas.addEventListener('pointerup', (e) => {
   // Clicking the task board billboard next to the spaceship opens the task board
   if (colony.pickBillboard(p.x, p.y)) {
     hud.openTaskBoard()
+    return
+  }
+
+  // Clicking the Colony Depot Kiosk opens the Shop / Plugin Manager
+  if (colony.pickShop(p.x, p.y)) {
+    hud.openShop()
     return
   }
 
@@ -618,6 +656,11 @@ window.addEventListener('keydown', (e) => {
     case 'B':
       if (e.shiftKey) actions.focusBillboard()
       else hud.toggleTaskBoard()
+      break
+    case 'd':
+    case 'D':
+      if (e.shiftKey) actions.focusShop()
+      else hud.toggleShop()
       break
     case 'v':
     case 'V':

@@ -140,23 +140,20 @@ export const newSession = async (harnessId, dir) => dispatch(harnessId).newSessi
  * Scans scheduled cron jobs and routines across all detected harnesses and local agent configs.
  */
 export async function scanCronJobs() {
-  const harnesses = await detectedHarnesses()
+  const harnessesWithCron = HARNESSES.filter((h) => typeof h.scanCronJobs === 'function')
   const lists = await Promise.all(
-    harnesses.map(async (h) => {
-      if (typeof h.scanCronJobs === 'function') {
-        try {
-          const jobs = await h.scanCronJobs()
-          return (jobs || []).map((j) => ({
-            ...j,
-            harness: h.id,
-            harnessName: h.name,
-          }))
-        } catch (err) {
-          console.warn(`bot-crossing: harness "${h.id}" failed to scan cron jobs —`, err?.message || err)
-          return []
-        }
+    harnessesWithCron.map(async (h) => {
+      try {
+        const jobs = await h.scanCronJobs()
+        return (jobs || []).map((j) => ({
+          ...j,
+          harness: h.id,
+          harnessName: h.name,
+        }))
+      } catch (err) {
+        console.warn(`bot-crossing: harness "${h.id}" failed to scan cron jobs —`, err?.message || err)
+        return []
       }
-      return []
     })
   )
 

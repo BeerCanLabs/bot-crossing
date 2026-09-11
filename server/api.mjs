@@ -14,13 +14,7 @@ import {
 } from './scan.mjs'
 import { chatWithSubmindAgent } from './harnesses/submind.mjs'
 
-let taskBoardMiddleware = null
-try {
-  const { createTaskBoardMiddleware } = await import('@beercanlabs/bot-crossing-taskboard')
-  taskBoardMiddleware = createTaskBoardMiddleware()
-} catch {
-  // plugin optional
-}
+import { pluginManager } from './plugins.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = process.env.BOT_CROSSING_DATA || path.join(here, '..', 'data')
@@ -350,6 +344,8 @@ function hostnameOf(value) {
  * POST is rejected; pass `-H 'Origin: http://localhost:5274'` if you are scripting this.
  */
 function isLocalRequest(req) {
+  // Allow Cloudflare Access or authenticated reverse proxy headers
+  if (req.headers['cf-access-authenticated-user-email'] || req.headers['cf-access-jwt-assertion']) return true
   const host = hostnameOf(req.headers.host)
   if (!LOCAL_HOSTS.has(host) && !host.endsWith('.run.app')) return false
 
@@ -362,6 +358,7 @@ function isLocalRequest(req) {
 }
 
 function readJsonBody(req, limit = 4 * 1024 * 1024) {
+  if (req.body) return Promise.resolve(req.body)
   return new Promise((resolve, reject) => {
     let size = 0
     const chunks = []
@@ -394,11 +391,23 @@ export async function apiMiddleware(req, res, next) {
     return send(res, 403, { error: 'Bot Crossing only answers its own page on this machine' })
   }
 
-  if (url.pathname.startsWith('/api/taskboard') && taskBoardMiddleware) {
-    return taskBoardMiddleware(req, res, next)
-  }
+  // Intercept with active plugins (RBAC, Billboard, etc.)
+  let pluginsHandled = false
+  await pluginManager.middleware(req, res, () => {
+    pluginsHandled = true
+  })
+  if (!pluginsHandled) return // Plugin handled the request directly
 
   try {
+    if (url.pathname === '/api/plugins' && req.method === 'GET') {
+      return send(res, 200, pluginManager.getStatus())
+    }
+
+    if (url.pathname === '/api/plugins/toggle' && req.method === 'POST') {
+      const { id, enabled } = await readJsonBody(req)
+      const result = await pluginManager.setPluginEnabled(id, enabled)
+      return send(res, 200, { ok: true, plugin: result })
+    }
     if (url.pathname === '/api/threads' && req.method === 'GET') {
       const threads = await reconcileArchived(await scanThreads())
       // A harness that is present but cannot read its own store says so here, rather than

@@ -15,6 +15,7 @@ import {
 import { createBuilding, buildingUniforms, Scaffolds } from '../world/buildings.js'
 import { Ship } from '../world/ship.js'
 import { TaskBoardBillboard } from '../world/task-board.js'
+import { ShopKiosk } from '../world/shop.js'
 import { Astronauts } from '../agents/astronauts.js'
 import { Indicators, BADGE } from '../agents/indicators.js'
 import { MAX_AGENT_CAP } from '../core/settings.js'
@@ -139,6 +140,7 @@ export class Colony {
 
     this.ship = new Ship(scene, shipPosition())
     this.taskBoard = new TaskBoardBillboard(scene, shipPosition(), this.planet)
+    this.shopKiosk = new ShopKiosk(scene, shipPosition(), this.planet)
     this.astronauts = new Astronauts(scene, settings)
     this.astronauts.world = this._world()
     // Sized for the largest preset rather than the current one: unlike the astronaut meshes these
@@ -190,6 +192,7 @@ export class Colony {
     const ship = shipPosition()
     this.ship.group.position.y = terrainHeight(ship.x, ship.z, this.planet)
     if (this.taskBoard) this.taskBoard.setPlanet(this.planet)
+    if (this.shopKiosk) this.shopKiosk.setPlanet(this.planet)
 
     this._dustTint.set(this.planet.ground.high)
   }
@@ -218,6 +221,9 @@ export class Colony {
     clear.push({ x: ship.x, z: ship.z, r: 7.5 })
     if (this.taskBoard) {
       clear.push({ x: this.taskBoard.position.x, z: this.taskBoard.position.z, r: 3.5 })
+    }
+    if (this.shopKiosk) {
+      clear.push({ x: this.shopKiosk.position.x, z: this.shopKiosk.position.z, r: 3.0 })
     }
     this.scatterGroup = createScatter(this.planet, this.settings.get('scatterDensity'), clear)
     this.worldGroup.add(this.scatterGroup)
@@ -579,6 +585,9 @@ export class Colony {
     if (this.taskBoard) {
       obstacles.push({ x: this.taskBoard.position.x, z: this.taskBoard.position.z, r: 1.8 + AGENT_RADIUS })
     }
+    if (this.shopKiosk) {
+      obstacles.push({ x: this.shopKiosk.position.x, z: this.shopKiosk.position.z, r: 1.5 + AGENT_RADIUS })
+    }
     this.nav.rebuild(obstacles)
   }
 
@@ -732,6 +741,7 @@ export class Colony {
     buildingUniforms.uTime.value = elapsed
     this.ship.update(dt, elapsed, night)
     if (this.taskBoard) this.taskBoard.update(dt, elapsed, night)
+    if (this.shopKiosk) this.shopKiosk.update(dt, elapsed, night)
 
     this._growBuildings(dt)
     this.astronauts.update(dt, elapsed)
@@ -875,6 +885,18 @@ export class Colony {
     if (this.taskBoard) this.taskBoard.setHover(hovered)
   }
 
+  pickShop(ndcX, ndcY) {
+    return this.shopKiosk ? this.shopKiosk.pick(this.camera, ndcX, ndcY) : false
+  }
+
+  setShopHover(hovered) {
+    if (this.shopKiosk) this.shopKiosk.setHover(hovered)
+  }
+
+  setTaskBoardVisible(visible) {
+    if (this.taskBoard) this.taskBoard.group.visible = visible
+  }
+
   updateTaskBoardData(data) {
     if (this.taskBoard) this.taskBoard.updateContent(data)
   }
@@ -897,6 +919,7 @@ export class Colony {
     this.sky.dispose()
     this.ship.dispose()
     if (this.taskBoard) this.taskBoard.dispose()
+    if (this.shopKiosk) this.shopKiosk.dispose()
     this.astronauts.dispose()
     this.indicators.dispose()
     this.particles.dispose()
