@@ -1,11 +1,19 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
+const BARRED_EMAILS = new Set(['dale@sackrider.com'])
+
+const ROOT_ADMIN_EMAILS = new Set([
+  'dale.sackrider@gmail.com',
+  'dalesackrider@gmail.com',
+  'dsackrider@gmail.com'
+])
+
 export class RbacStore {
   constructor(dataDir) {
     this.filePath = path.join(dataDir || process.cwd(), 'rbac-users.json')
     this.data = {
-      defaultRole: 'spectator',
+      defaultRole: 'unauthorized', // Strict invite-only: no uninvited visitors allowed
       users: {}
     }
     this.load()
@@ -16,19 +24,29 @@ export class RbacStore {
       if (fs.existsSync(this.filePath)) {
         const raw = JSON.parse(fs.readFileSync(this.filePath, 'utf-8'))
         this.data = {
-          defaultRole: raw.defaultRole || 'spectator',
+          defaultRole: raw.defaultRole || 'unauthorized',
           users: raw.users || {}
         }
-      } else {
-        // If file doesn't exist, create initial bootstrap with admin
-        const initialAdmin = process.env.COLONY_ADMIN_EMAIL || 'dale.sackrider@gmail.com'
-        this.data.users[initialAdmin.toLowerCase()] = {
+      }
+
+      // Ensure root admin always exists
+      const rootEmail = process.env.COLONY_ADMIN_EMAIL || 'dale.sackrider@gmail.com'
+      const normalizedRoot = rootEmail.toLowerCase().trim()
+      if (!this.data.users[normalizedRoot]) {
+        this.data.users[normalizedRoot] = {
           role: 'admin',
           allowedAgents: ['*'],
           updatedAt: new Date().toISOString()
         }
-        this.save()
       }
+
+      // Guarantee barred email is purged
+      for (const barred of BARRED_EMAILS) {
+        if (this.data.users[barred]) {
+          delete this.data.users[barred]
+        }
+      }
+      this.save()
     } catch (err) {
       console.error('[RBAC] Failed to load rbac-users.json:', err.message)
     }
@@ -47,51 +65,44 @@ export class RbacStore {
   }
 
   getUser(email) {
-    if (!email) return { role: 'spectator', allowedAgents: [] }
-    const normalized = email.toLowerCase().trim()
-
-    // dale@sackrider.com is explicitly barred
-    if (normalized === 'dale@sackrider.com') {
+    if (!email) {
       return { role: 'unauthorized', allowedAgents: [] }
     }
+    const normalized = email.toLowerCase().trim()
 
-    // Recognize owner / admin emails
-    const defaultAdmins = [
-      'dale.sackrider@gmail.com',
-      'dalesackrider@gmail.com',
-      'dsackrider@gmail.com'
-    ]
-    if (defaultAdmins.includes(normalized)) {
+    // Explicitly barred emails never get access (not even spectator)
+    if (BARRED_EMAILS.has(normalized)) {
+      return { role: 'unauthorized', allowedAgents: [], barred: true }
+    }
+
+    // Recognize root admin emails
+    if (ROOT_ADMIN_EMAILS.has(normalized)) {
       return {
         role: 'admin',
         allowedAgents: ['*']
       }
-    }
-    
-    // If table is completely empty, make the first user admin
-    const userKeys = Object.keys(this.data.users)
-    if (userKeys.length === 0) {
-      this.setUser(normalized, 'admin', ['*'])
-      return this.data.users[normalized]
     }
 
     if (this.data.users[normalized]) {
       return this.data.users[normalized]
     }
 
-    // Unregistered user falls back to defaultRole
+    // Strict invite-only: uninvited visitors are unauthorized
     return {
-      role: this.data.defaultRole || 'spectator',
+      role: this.data.defaultRole || 'unauthorized',
       allowedAgents: []
     }
   }
 
   setUser(email, role, allowedAgents = []) {
-    if (!email) return
+    if (!email) throw new Error('Email is required.')
     const normalized = email.toLowerCase().trim()
+    if (BARRED_EMAILS.has(normalized)) {
+      throw new Error('This email address is barred from this colony.')
+    }
     const validRoles = ['admin', 'agent_manager', 'spectator']
     const assignedRole = validRoles.includes(role) ? role : 'spectator'
-    
+
     this.data.users[normalized] = {
       role: assignedRole,
       allowedAgents: assignedRole === 'admin' ? ['*'] : (Array.isArray(allowedAgents) ? allowedAgents : []),
@@ -104,6 +115,9 @@ export class RbacStore {
   deleteUser(email) {
     if (!email) return false
     const normalized = email.toLowerCase().trim()
+    if (ROOT_ADMIN_EMAILS.has(normalized)) {
+      throw new Error('Root administrator cannot be deleted.')
+    }
     if (this.data.users[normalized]) {
       delete this.data.users[normalized]
       this.save()
@@ -114,7 +128,7 @@ export class RbacStore {
 
   getAllUsers() {
     return {
-      defaultRole: this.data.defaultRole,
+      defaultRole: this.data.defaultRole || 'unauthorized',
       users: this.data.users
     }
   }

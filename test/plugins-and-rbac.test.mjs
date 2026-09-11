@@ -151,3 +151,162 @@ test('RBAC: Non-admin is rejected from managing roles', async () => {
     assert.equal(res.status, 403)
   })
 })
+
+test('RBAC: Dynamic fleet discovery includes Higgins and Submind agents', async () => {
+  await withServer(async ({ base }) => {
+    const res = await fetch(`${base}/api/rbac/agents`, {
+      headers: { Origin: base }
+    })
+    assert.equal(res.status, 200)
+    const data = await res.json()
+    assert.ok(Array.isArray(data.agents))
+    const ids = data.agents.map((a) => a.id)
+    assert.ok(ids.includes('higgins'), 'Higgins must be present in dynamic fleet')
+    assert.ok(ids.includes('donna'), 'Donna must be present in dynamic fleet')
+    assert.ok(ids.includes('archie'), 'Archie must be present in dynamic fleet')
+    assert.ok(ids.includes('castle'), 'Castle must be present in dynamic fleet')
+    assert.ok(ids.includes('switch'), 'Switch must be present in dynamic fleet')
+    assert.ok(ids.includes('geordi'), 'Geordi must be present in dynamic fleet')
+  })
+})
+
+test('RBAC: Stephanie assigned to Higgins can message both higgins and sm-higgins', async () => {
+  await withServer(async ({ base }) => {
+    const adminHeaders = {
+      Origin: base,
+      'Content-Type': 'application/json',
+      'Cf-Access-Authenticated-User-Email': 'dale.sackrider@gmail.com'
+    }
+
+    // Admin grants Stephanie access to Higgins
+    const assignRes = await fetch(`${base}/api/rbac/users`, {
+      method: 'POST',
+      headers: adminHeaders,
+      body: JSON.stringify({
+        email: 'stephanie@example.com',
+        role: 'agent_manager',
+        allowedAgents: ['higgins']
+      })
+    })
+    assert.equal(assignRes.status, 200)
+
+    // Stephanie messages sm-higgins (normalized match)
+    const chatHiggins = await fetch(`${base}/api/chat`, {
+      method: 'POST',
+      headers: {
+        Origin: base,
+        'Content-Type': 'application/json',
+        'Cf-Access-Authenticated-User-Email': 'stephanie@example.com'
+      },
+      body: JSON.stringify({
+        agent: 'sm-higgins',
+        message: 'Hello Higgins from Stephanie'
+      })
+    })
+    // 200 or downstream handler passes through (not 403 Access Denied)
+    assert.notEqual(chatHiggins.status, 403)
+
+    // Stephanie cannot message sm-donna
+    const chatDonna = await fetch(`${base}/api/chat`, {
+      method: 'POST',
+      headers: {
+        Origin: base,
+        'Content-Type': 'application/json',
+        'Cf-Access-Authenticated-User-Email': 'stephanie@example.com'
+      },
+      body: JSON.stringify({
+        agent: 'sm-donna',
+        message: 'Hello Donna'
+      })
+    })
+    assert.equal(chatDonna.status, 403)
+  })
+})
+
+test('RBAC: Strict invite-only blocks uninvited visitors from colony data', async () => {
+  await withServer(async ({ base }) => {
+    const uninvitedHeaders = {
+      Origin: base,
+      'Content-Type': 'application/json',
+      'Cf-Access-Authenticated-User-Email': 'uninvited@intruder.com'
+    }
+
+    // 1. Uninvited user role is unauthorized
+    const meRes = await fetch(`${base}/api/rbac/me`, { headers: uninvitedHeaders })
+    assert.equal(meRes.status, 200)
+    const me = await meRes.json()
+    assert.equal(me.role, 'unauthorized')
+
+    // 2. Uninvited user is blocked from threads
+    const threadsRes = await fetch(`${base}/api/threads`, { headers: uninvitedHeaders })
+    assert.equal(threadsRes.status, 403)
+
+    // 3. Uninvited user is blocked from tasks
+    const tasksRes = await fetch(`${base}/api/tasks`, { headers: uninvitedHeaders })
+    assert.equal(tasksRes.status, 403)
+
+    // 4. Uninvited user cannot toggle plugins
+    const toggleRes = await fetch(`${base}/api/plugins/toggle`, {
+      method: 'POST',
+      headers: uninvitedHeaders,
+      body: JSON.stringify({ id: 'rbac', enabled: false })
+    })
+    assert.equal(toggleRes.status, 403)
+  })
+})
+
+test('RBAC: Spectator cannot toggle or disable plugins', async () => {
+  await withServer(async ({ base }) => {
+    const adminHeaders = {
+      Origin: base,
+      'Content-Type': 'application/json',
+      'Cf-Access-Authenticated-User-Email': 'dale.sackrider@gmail.com'
+    }
+
+    // Add visitor as spectator
+    await fetch(`${base}/api/rbac/users`, {
+      method: 'POST',
+      headers: adminHeaders,
+      body: JSON.stringify({ email: 'visitor@example.com', role: 'spectator' })
+    })
+
+    // Spectator attempts to disable RBAC
+    const toggleRes = await fetch(`${base}/api/plugins/toggle`, {
+      method: 'POST',
+      headers: {
+        Origin: base,
+        'Content-Type': 'application/json',
+        'Cf-Access-Authenticated-User-Email': 'visitor@example.com'
+      },
+      body: JSON.stringify({ id: 'rbac', enabled: false })
+    })
+    assert.equal(toggleRes.status, 403)
+  })
+})
+
+test('RBAC: Barred email dale@sackrider.com is permanently denied', async () => {
+  await withServer(async ({ base }) => {
+    const barredHeaders = {
+      Origin: base,
+      'Cf-Access-Authenticated-User-Email': 'dale@sackrider.com'
+    }
+
+    const meRes = await fetch(`${base}/api/rbac/me`, { headers: barredHeaders })
+    assert.equal(meRes.status, 200)
+    const me = await meRes.json()
+    assert.equal(me.role, 'unauthorized')
+    assert.equal(me.barred, true)
+
+    // Admin attempts to add dale@sackrider.com - rejected
+    const addRes = await fetch(`${base}/api/rbac/users`, {
+      method: 'POST',
+      headers: {
+        Origin: base,
+        'Content-Type': 'application/json',
+        'Cf-Access-Authenticated-User-Email': 'dale.sackrider@gmail.com'
+      },
+      body: JSON.stringify({ email: 'dale@sackrider.com', role: 'spectator' })
+    })
+    assert.equal(addRes.status, 400)
+  })
+})

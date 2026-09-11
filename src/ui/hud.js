@@ -946,13 +946,20 @@ export class Hud {
     if (!brandbar || document.getElementById('user-rbac-pill')) return
     const pill = document.createElement('div')
     pill.id = 'user-rbac-pill'
+    const roleColors = {
+      admin: '#00e5ff',
+      agent_manager: '#ffa726',
+      spectator: '#94a3b8',
+      unauthorized: '#ef4444'
+    }
+    const color = roleColors[data.role] || '#94a3b8'
     pill.style.cssText = `
       font-size: 11px;
       padding: 3px 8px;
       border-radius: 9999px;
       background: rgba(255,255,255,0.06);
-      border: 1px solid ${data.role === 'admin' ? '#00e5ff' : data.role === 'agent_manager' ? '#ffa726' : '#94a3b8'};
-      color: ${data.role === 'admin' ? '#00e5ff' : data.role === 'agent_manager' ? '#ffa726' : '#94a3b8'};
+      border: 1px solid ${color};
+      color: ${color};
       margin-left: 8px;
       font-family: monospace;
       display: inline-flex;
@@ -960,25 +967,69 @@ export class Hud {
       gap: 5px;
       cursor: pointer;
     `
-    pill.title = `Logged in as ${data.user?.email || 'Guest'} (${data.role.toUpperCase()}) — Click to open RBAC`
+    pill.title = `Logged in as ${data.user?.email || 'Guest'} (${(data.role || 'unauthorized').toUpperCase()})`
     pill.innerHTML = `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;"></span><span>${data.user?.email?.split('@')[0] || 'User'}</span><span style="opacity:0.6;font-size:9px;">[${data.role}]</span>`
     pill.addEventListener('click', () => {
-      this.openShop()
-      this.switchShopTab('rbac')
+      if (data.role === 'admin') {
+        this.openShop()
+        this.switchShopTab('rbac')
+      } else if (data.role === 'spectator') {
+        this.toast('🔒 Spectator: Connected in read-only mode.', 'info')
+      } else if (data.role === 'agent_manager') {
+        this.toast(`🛡️ Agent Manager: Assigned to ${data.allowedAgents?.includes('*') ? 'All' : (data.allowedAgents?.length || 0)} agents.`, 'info')
+      } else {
+        this.toast('🔒 Access Denied: Unauthorized visitor.', 'err')
+      }
     })
     const tasksBtn = this.$('#btn-tasks')
     if (tasksBtn) brandbar.insertBefore(pill, tasksBtn)
     else brandbar.appendChild(pill)
   }
 
+  showLockoutScreen(data) {
+    const screen = this.$('#colony-lockout-screen')
+    if (!screen) return
+    const userEmail = data.user?.email || 'Anonymous / Unauthenticated'
+    const isBarred = data.barred || userEmail === 'dale@sackrider.com'
+
+    screen.innerHTML = `
+      <div class="panel" style="max-width: 520px; width: 90%; text-align: center; padding: 36px 28px; border: 1px solid ${isBarred ? '#ef4444' : 'rgba(239, 68, 68, 0.4)'}; background: #0c1017; box-shadow: 0 24px 64px rgba(0, 0, 0, 0.9), 0 0 40px rgba(239, 68, 68, 0.2); border-radius: 14px;">
+        <div style="font-size: 48px; margin-bottom: 16px;">🔒</div>
+        <h2 style="font-size: 20px; color: #f87171; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 8px;">Colony Access Restricted</h2>
+        <p style="font-size: 13px; color: #94a3b8; line-height: 1.6; margin-bottom: 20px;">
+          This colony is private and operates in strict <strong>invite-only</strong> mode. Uninvited visitors cannot access telemetry, mission threads, or agent communications.
+        </p>
+        <div style="display: inline-block; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 9999px; padding: 6px 16px; font-family: monospace; font-size: 12px; color: #e2e8f0; margin-bottom: 20px;">
+          Identity: <span style="color: ${isBarred ? '#f87171' : '#38bdf8'}; font-weight: 600;">${escapeHtml(userEmail)}</span>
+        </div>
+        ${isBarred ? `
+          <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 12px; color: #fca5a5; font-size: 12px; margin-bottom: 18px;">
+            ⚠️ This email address has been explicitly barred from accessing the colony.
+          </div>
+        ` : `
+          <div style="font-size: 12px; color: #64748b; line-height: 1.5;">
+            To request an invitation, contact a Colony Administrator at <a href="mailto:dale.sackrider@gmail.com" style="color: #38bdf8; text-decoration: underline;">dale.sackrider@gmail.com</a>.
+          </div>
+        `}
+      </div>
+    `
+    screen.style.display = 'flex'
+  }
+
   openShop() {
-    if (window.colonyRbac && window.colonyRbac.role === 'spectator') {
-      this.toast('🔒 Access Restricted: You are connected as a Spectator (read-only) and cannot access the Colony Depot.', 'err')
-      return
-    }
-    if (window.colonyRbac && !window.colonyRbac.isAdmin && window.colonyRbac.role !== 'admin') {
-      this.toast('🔒 Admin Privileges Required: Only Colony Administrators can access the Depot.', 'err')
-      return
+    if (window.colonyRbac) {
+      if (window.colonyRbac.role === 'unauthorized') {
+        this.toast('🔒 Access Denied: Unauthorized visitors cannot access the Colony Depot.', 'err')
+        return
+      }
+      if (window.colonyRbac.role === 'spectator') {
+        this.toast('🔒 Access Restricted: You are connected as a Spectator (read-only) and cannot access the Colony Depot.', 'err')
+        return
+      }
+      if (window.colonyRbac.role !== 'admin' && !window.colonyRbac.isAdmin) {
+        this.toast('🔒 Admin Privileges Required: Only Colony Administrators can access the Depot.', 'err')
+        return
+      }
     }
     this.isShopOpen = true
     const modal = this.$('#shop-modal')
@@ -1062,10 +1113,12 @@ export class Hud {
           </div>
           <div style="display: flex; gap: 10px; align-items: center;">
             ${p.id === 'billboard' ? `<button class="btn small ghost" id="btn-cfg-billboard-link">Configure ⚙️</button>` : ''}
-            ${p.id === 'rbac' ? `<button class="btn small ghost" id="btn-cfg-rbac-link">Manage Users 👤</button>` : ''}
-            <button class="btn small ${p.enabled ? 'danger' : 'primary'}" data-toggle-plugin="${p.id}" data-enabled="${p.enabled ? 'true' : 'false'}">
-              ${p.enabled ? 'Disable' : 'Enable'}
-            </button>
+            ${p.id === 'rbac' && (!window.colonyRbac || window.colonyRbac.isAdmin || window.colonyRbac.role === 'admin') ? `<button class="btn small ghost" id="btn-cfg-rbac-link">Manage Users 👤</button>` : ''}
+            ${(!window.colonyRbac || window.colonyRbac.isAdmin || window.colonyRbac.role === 'admin') ? `
+              <button class="btn small ${p.enabled ? 'danger' : 'primary'}" data-toggle-plugin="${p.id}" data-enabled="${p.enabled ? 'true' : 'false'}">
+                ${p.enabled ? 'Disable' : 'Enable'}
+              </button>
+            ` : ''}
           </div>
         </div>
       `).join('')
@@ -1087,9 +1140,14 @@ export class Hud {
                 window.botCrossing.colony.setTaskBoardVisible(!currentlyEnabled)
               }
               this.renderShopInstalled()
+            } else {
+              const err = await toggleRes.json()
+              this.toast(err.error || 'Failed to toggle plugin', 'err')
+              this.renderShopInstalled()
             }
           } catch (err) {
-            alert('Failed to toggle plugin: ' + err.message)
+            this.toast('Failed to toggle plugin: ' + err.message, 'err')
+            this.renderShopInstalled()
           }
         })
       })
@@ -1160,45 +1218,63 @@ export class Hud {
     pane.innerHTML = `<div style="color: #94a3b8;">Loading RBAC settings...</div>`
 
     try {
-      const [meRes, usersRes] = await Promise.all([
-        fetch('/api/rbac/me'),
-        fetch('/api/rbac/users')
+      const [detectRes, usersRes, agentsRes] = await Promise.all([
+        fetch('/api/rbac/detect-auth'),
+        fetch('/api/rbac/users'),
+        fetch('/api/rbac/agents')
       ])
 
-      if (!meRes.ok) {
-        pane.innerHTML = `<div style="color: #94a3b8; padding: 20px;">RBAC is currently disabled or unreachable. Enable it in the Installed Addons tab.</div>`
+      const authData = await detectRes.json().catch(() => ({ authenticated: false }))
+
+      if (!authData.authenticated) {
+        pane.innerHTML = `
+          <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 18px; color: #fca5a5;">
+            <div style="font-weight: 700; font-size: 14px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+              <span>⚠️</span> Authentication Provider Required
+            </div>
+            <div style="font-size: 12px; color: #cbd5e1; line-height: 1.6;">
+              No authenticated identity was detected for this session. Colony RBAC requires identity verification through your provider (such as <strong>Cloudflare Zero Trust Access</strong> headers, reverse proxy authentication, or local git configuration).
+              <br /><br />
+              Please connect through your configured authenticated gateway before setting up access roles.
+            </div>
+          </div>
+        `
         return
       }
 
-      const me = await meRes.json()
       if (!usersRes.ok) {
         pane.innerHTML = `
           <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 16px; color: #fca5a5;">
-            <strong>Access Restricted:</strong> You are logged in as <code>${me.user?.email}</code> with role <code>${me.role}</code>. Only administrators can view and edit user roles.
+            <strong>Access Restricted:</strong> You are logged in as <code>${escapeHtml(authData.email)}</code> with role <code>${escapeHtml(authData.role)}</code>. Only colony administrators can view and manage user roles.
           </div>
         `
         return
       }
 
       const { defaultRole, users } = await usersRes.json()
+      const agentsData = await agentsRes.json().catch(() => ({ agents: [] }))
+      const allAgents = agentsData.agents || []
       const userList = Object.entries(users || {})
-      const availableAgents = ['sm-castle', 'sm-donna', 'sm-archie', 'sm-switch', 'sm-geordi', 'sm-draftsman']
 
       pane.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px; flex-wrap: wrap; gap: 12px;">
           <div>
-            <div style="font-size: 14px; font-weight: 600; color: #f1f5f9;">Current User Identity</div>
+            <div style="font-size: 14px; font-weight: 600; color: #f1f5f9;">Authenticated Administrator</div>
             <div style="font-size: 12px; color: #38bdf8; font-family: monospace; margin-top: 2px;">
-              ${escapeHtml(me.user?.email)} <span style="color: #ffa726;">(${me.role.toUpperCase()})</span>
+              ${escapeHtml(authData.email)} <span style="color: #00e5ff; font-weight: 600;">[${(authData.role || 'admin').toUpperCase()}]</span>
+              <span style="color: #94a3b8; font-size: 11px; margin-left: 6px;">(Provider: ${escapeHtml(authData.provider || 'gateway')})</span>
             </div>
           </div>
           <div style="font-size: 12px; color: #94a3b8;">
-            Default Unregistered Role: <strong style="color: #e2e8f0; text-transform: capitalize;">${escapeHtml(defaultRole)}</strong>
+            Policy: <strong style="color: #ef4444; text-transform: uppercase;">Strict Invite-Only</strong> (Uninvited visitors blocked)
           </div>
         </div>
 
         <div style="margin-top: 8px;">
-          <h3 style="font-size: 14px; color: #f1f5f9; margin-bottom: 10px;">User Role Directory (3 Roles)</h3>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h3 style="font-size: 14px; color: #f1f5f9;">User Directory &amp; Role Assignments</h3>
+            <span style="font-size: 11px; color: #94a3b8;">${allAgents.length} fleet agents discovered</span>
+          </div>
           <div style="overflow-x: auto;">
             <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
               <thead>
@@ -1210,41 +1286,51 @@ export class Hud {
                 </tr>
               </thead>
               <tbody>
-                ${userList.map(([email, info]) => `
-                  <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-                    <td style="padding: 10px 8px; font-family: monospace; color: #e2e8f0;">${escapeHtml(email)}</td>
-                    <td style="padding: 10px 8px;">
-                      <select class="user-role-select" data-email="${escapeHtml(email)}" style="background: #0f172a; border: 1px solid rgba(80,200,255,0.3); color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
-                        <option value="admin" ${info.role === 'admin' ? 'selected' : ''}>Admin (Full Control)</option>
-                        <option value="agent_manager" ${info.role === 'agent_manager' ? 'selected' : ''}>Agent Manager</option>
-                        <option value="spectator" ${info.role === 'spectator' ? 'selected' : ''}>Spectator (Read-Only)</option>
-                      </select>
-                    </td>
-                    <td style="padding: 10px 8px;">
-                      ${info.role === 'admin' ? '<span style="color: #00e5ff;">All Agents (*)</span>' : info.role === 'spectator' ? '<span style="color: #64748b;">None (Read-Only)</span>' : `
-                        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
-                          ${availableAgents.map((ag) => `
-                            <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: #cbd5e1; cursor: pointer;">
-                              <input type="checkbox" class="agent-check" data-email="${escapeHtml(email)}" data-agent="${ag}" ${(info.allowedAgents || []).includes(ag) ? 'checked' : ''} />
-                              ${ag.replace(/^sm-/, '')}
-                            </label>
-                          `).join('')}
-                        </div>
-                      `}
-                    </td>
-                    <td style="padding: 10px 8px; text-align: right;">
-                      <button class="btn small primary btn-save-user" data-email="${escapeHtml(email)}" style="margin-right: 6px;">Save</button>
-                      <button class="btn small danger btn-del-user" data-email="${escapeHtml(email)}">${ICON.trash || 'Delete'}</button>
-                    </td>
-                  </tr>
-                `).join('')}
+                ${userList.map(([email, info]) => {
+                  const isRoot = ['dale.sackrider@gmail.com', 'dalesackrider@gmail.com', 'dsackrider@gmail.com'].includes(email.toLowerCase())
+                  const allowed = info.allowedAgents || []
+                  const isAllAgents = allowed.includes('*')
+                  const summaryText = isAllAgents ? 'All Agents (*)' : (allowed.length ? `${allowed.length} agent${allowed.length > 1 ? 's' : ''} (${allowed.slice(0, 2).map((a) => a.replace(/^sm-/, '')).join(', ')}${allowed.length > 2 ? '...' : ''})` : 'None assigned')
+
+                  return `
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                      <td style="padding: 10px 8px; font-family: monospace; color: #e2e8f0;">
+                        ${escapeHtml(email)}
+                        ${isRoot ? '<span style="color: #00e5ff; font-size: 10px; margin-left: 4px;">[ROOT]</span>' : ''}
+                      </td>
+                      <td style="padding: 10px 8px;">
+                        <select class="user-role-select" data-email="${escapeHtml(email)}" ${isRoot ? 'disabled' : ''} style="background: #0f172a; border: 1px solid rgba(80,200,255,0.3); color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
+                          <option value="admin" ${info.role === 'admin' ? 'selected' : ''}>Admin (Full Control)</option>
+                          <option value="agent_manager" ${info.role === 'agent_manager' ? 'selected' : ''}>Agent Manager</option>
+                          <option value="spectator" ${info.role === 'spectator' ? 'selected' : ''}>Spectator (Read-Only)</option>
+                        </select>
+                      </td>
+                      <td style="padding: 10px 8px;">
+                        ${info.role === 'admin' ? '<span style="color: #00e5ff; font-weight: 500;">All Agents (*)</span>' : info.role === 'spectator' ? '<span style="color: #64748b;">None (Read-Only)</span>' : `
+                          <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 11px; color: ${isAllAgents ? '#00e5ff' : allowed.length ? '#f59e0b' : '#64748b'}; font-family: monospace;">
+                              ${escapeHtml(summaryText)}
+                            </span>
+                            <button class="btn small ghost btn-assign-agents" data-email="${escapeHtml(email)}" title="Configure agent permissions">
+                              Assign Agents ⚙️
+                            </button>
+                          </div>
+                        `}
+                      </td>
+                      <td style="padding: 10px 8px; text-align: right;">
+                        <button class="btn small primary btn-save-user" data-email="${escapeHtml(email)}" ${isRoot ? 'disabled' : ''} style="margin-right: 6px;">Save</button>
+                        <button class="btn small danger btn-del-user" data-email="${escapeHtml(email)}" ${isRoot ? 'disabled' : ''}>${ICON.trash || 'Delete'}</button>
+                      </td>
+                    </tr>
+                  `
+                }).join('')}
               </tbody>
             </table>
           </div>
         </div>
 
         <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 14px; margin-top: 12px;">
-          <h4 style="font-size: 13px; color: #f1f5f9; margin-bottom: 10px;">Add New User</h4>
+          <h4 style="font-size: 13px; color: #f1f5f9; margin-bottom: 10px;">Invite User to Colony</h4>
           <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
             <input type="email" id="new-user-email" placeholder="user@domain.com" style="background: #0f172a; border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; flex: 1; min-width: 200px;" />
             <select id="new-user-role" style="background: #0f172a; border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px;">
@@ -1252,19 +1338,27 @@ export class Hud {
               <option value="agent_manager">Agent Manager</option>
               <option value="admin">Admin</option>
             </select>
-            <button class="btn small primary" id="btn-add-user">Add User</button>
+            <button class="btn small primary" id="btn-add-user">Grant Access</button>
           </div>
         </div>
       `
 
-      // Wire save buttons
+      // Wire Assign Agents buttons to open the scalable modal
+      pane.querySelectorAll('.btn-assign-agents').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const email = btn.dataset.email
+          const currentAllowed = users[email]?.allowedAgents || []
+          this.openAgentPicker(email, currentAllowed, allAgents)
+        })
+      })
+
+      // Wire save role buttons
       pane.querySelectorAll('.btn-save-user').forEach((btn) => {
         btn.addEventListener('click', async () => {
           const email = btn.dataset.email
           const roleSelect = pane.querySelector(`.user-role-select[data-email="${email}"]`)
           const role = roleSelect?.value || 'spectator'
-          const checks = pane.querySelectorAll(`.agent-check[data-email="${email}"]:checked`)
-          const allowedAgents = Array.from(checks).map((c) => c.dataset.agent)
+          const existingAllowed = users[email]?.allowedAgents || []
 
           btn.disabled = true
           btn.textContent = 'Saving...'
@@ -1272,7 +1366,7 @@ export class Hud {
             const saveRes = await fetch('/api/rbac/users', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email, role, allowedAgents })
+              body: JSON.stringify({ email, role, allowedAgents: role === 'admin' ? ['*'] : existingAllowed })
             })
             if (saveRes.ok) {
               this.renderShopRbac()
@@ -1308,15 +1402,19 @@ export class Hud {
       pane.querySelector('#btn-add-user')?.addEventListener('click', async () => {
         const emailInput = pane.querySelector('#new-user-email')
         const roleSelect = pane.querySelector('#new-user-role')
-        const email = emailInput?.value?.trim()
+        const email = emailInput?.value?.trim()?.toLowerCase()
         const role = roleSelect?.value || 'spectator'
+
         if (!email) return alert('Please enter a valid user email')
+        if (email === 'dale@sackrider.com') {
+          return alert('This email address is barred from this colony.')
+        }
 
         try {
           const addRes = await fetch('/api/rbac/users', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, role, allowedAgents: [] })
+            body: JSON.stringify({ email, role, allowedAgents: role === 'admin' ? ['*'] : [] })
           })
           if (addRes.ok) {
             this.renderShopRbac()
@@ -1332,6 +1430,170 @@ export class Hud {
     } catch (err) {
       pane.innerHTML = `<div style="color: #ef4444;">Failed to load RBAC: ${escapeHtml(err.message)}</div>`
     }
+  }
+
+  openAgentPicker(email, currentAllowed = [], allAgents = []) {
+    const modal = this.$('#rbac-agent-picker-modal')
+    if (!modal) return
+
+    let selected = new Set(currentAllowed.map((a) => a.toLowerCase().replace(/^sm-/, '').trim()))
+    const isAll = selected.has('*')
+
+    const titleEl = this.$('#rbac-agent-picker-title')
+    if (titleEl) titleEl.textContent = `Assign Agents for ${email}`
+
+    const searchInput = this.$('#rbac-agent-picker-search')
+    if (searchInput) searchInput.value = ''
+
+    const listEl = this.$('#rbac-agent-picker-list')
+    const countEl = this.$('#rbac-agent-picker-count')
+
+    const updateCount = () => {
+      if (!countEl) return
+      if (selected.has('*')) {
+        countEl.textContent = `All Agents (*) selected`
+      } else {
+        countEl.textContent = `Selected ${selected.size} of ${allAgents.length} agents`
+      }
+    }
+
+    const renderList = (filter = '') => {
+      const term = filter.trim().toLowerCase()
+      const filtered = allAgents.filter((a) => {
+        if (!term) return true
+        return (
+          a.id.toLowerCase().includes(term) ||
+          (a.name && a.name.toLowerCase().includes(term)) ||
+          (a.title && a.title.toLowerCase().includes(term)) ||
+          (a.domain && a.domain.toLowerCase().includes(term)) ||
+          (a.role && a.role.toLowerCase().includes(term))
+        )
+      })
+
+      listEl.innerHTML = filtered.map((a) => {
+        const isChecked = selected.has('*') || selected.has(a.id) || selected.has(`sm-${a.id}`)
+        return `
+          <div class="agent-card-pick" data-id="${escapeHtml(a.id)}" style="background: rgba(22, 27, 38, 0.8); border: 1px solid ${isChecked ? '#00e5ff' : 'rgba(255,255,255,0.08)'}; border-radius: 8px; padding: 12px; cursor: pointer; display: flex; gap: 10px; align-items: flex-start; transition: border-color 0.15s;">
+            <input type="checkbox" class="picker-check" data-id="${escapeHtml(a.id)}" ${isChecked ? 'checked' : ''} style="margin-top: 3px; cursor: pointer;" />
+            <div style="flex: 1; min-width: 0;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                <span style="font-weight: 600; font-size: 13px; color: #f1f5f9;">${escapeHtml(a.name || a.id)}</span>
+                <span style="font-size: 10px; font-family: monospace; background: rgba(56,189,248,0.12); color: #38bdf8; padding: 2px 6px; border-radius: 4px;">${escapeHtml(a.domain || 'Fleet')}</span>
+              </div>
+              <div style="font-size: 11px; color: #94a3b8; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+                ${escapeHtml(a.role || a.title || '')}
+              </div>
+            </div>
+          </div>
+        `
+      }).join('')
+
+      listEl.querySelectorAll('.agent-card-pick').forEach((card) => {
+        card.addEventListener('click', (e) => {
+          if (e.target.tagName === 'INPUT') return
+          const chk = card.querySelector('.picker-check')
+          if (chk) {
+            chk.checked = !chk.checked
+            chk.dispatchEvent(new Event('change'))
+          }
+        })
+      })
+
+      listEl.querySelectorAll('.picker-check').forEach((chk) => {
+        chk.addEventListener('change', () => {
+          const id = chk.dataset.id
+          if (selected.has('*')) {
+            selected.delete('*')
+            allAgents.forEach((ag) => selected.add(ag.id))
+          }
+          if (chk.checked) selected.add(id)
+          else selected.delete(id)
+          updateCount()
+          renderList(searchInput?.value || '')
+        })
+      })
+
+      updateCount()
+    }
+
+    renderList()
+
+    searchInput.oninput = () => renderList(searchInput.value)
+
+    const submindBtn = this.$('#btn-picker-submind-fleet')
+    if (submindBtn) {
+      submindBtn.onclick = () => {
+        selected.delete('*')
+        const submindIds = ['higgins', 'donna', 'castle', 'archie', 'draftsman', 'switch', 'geordi', 'alc-support', 'mcp-gateway']
+        submindIds.forEach((id) => selected.add(id))
+        renderList(searchInput?.value || '')
+      }
+    }
+
+    const selectAllBtn = this.$('#btn-picker-select-all')
+    if (selectAllBtn) {
+      selectAllBtn.onclick = () => {
+        selected = new Set(['*'])
+        renderList(searchInput?.value || '')
+      }
+    }
+
+    const clearAllBtn = this.$('#btn-picker-clear-all')
+    if (clearAllBtn) {
+      clearAllBtn.onclick = () => {
+        selected.clear()
+        renderList(searchInput?.value || '')
+      }
+    }
+
+    const closePicker = () => {
+      modal.style.display = 'none'
+    }
+
+    const closeBtn = this.$('#btn-agent-picker-close')
+    if (closeBtn) closeBtn.onclick = closePicker
+
+    const backdrop = this.$('#rbac-agent-picker-backdrop')
+    if (backdrop) backdrop.onclick = closePicker
+
+    const cancelBtn = this.$('#btn-picker-cancel')
+    if (cancelBtn) cancelBtn.onclick = closePicker
+
+    const saveBtn = this.$('#btn-picker-save')
+    if (saveBtn) {
+      saveBtn.onclick = async () => {
+        saveBtn.disabled = true
+        saveBtn.textContent = 'Saving...'
+        try {
+          const allowedAgents = selected.has('*') ? ['*'] : Array.from(selected)
+          const res = await fetch('/api/rbac/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email,
+              role: 'agent_manager',
+              allowedAgents
+            })
+          })
+          if (res.ok) {
+            closePicker()
+            this.toast(`Updated agent permissions for ${email}`, 'ok')
+            this.renderShopRbac()
+          } else {
+            const err = await res.json()
+            alert('Error: ' + err.error)
+          }
+        } catch (err) {
+          alert('Failed: ' + err.message)
+        } finally {
+          saveBtn.disabled = false
+          saveBtn.textContent = 'Apply & Save'
+        }
+      }
+    }
+
+    modal.style.display = 'flex'
+    searchInput?.focus()
   }
 
   updateTaskBoard(data) {
@@ -2143,6 +2405,44 @@ const TEMPLATE = `
     </div>
   </div>
 </div>
+
+<div class="task-board-modal" id="rbac-agent-picker-modal" style="display: none; z-index: 10002;">
+  <div class="task-board-backdrop" id="rbac-agent-picker-backdrop"></div>
+  <div class="task-board-window panel" style="max-width: 680px; width: 92%; box-shadow: 0 24px 64px rgba(0, 0, 0, 0.85), 0 0 32px rgba(0, 229, 255, 0.25);">
+    <div class="task-board-head">
+      <div class="task-board-title-group">
+        <div class="task-board-badge" style="border-color: #00e5ff; color: #00e5ff;"><i class="task-dot" style="background: #00e5ff;"></i> AGENT MANAGER</div>
+        <div class="task-board-title-text">
+          <h2 id="rbac-agent-picker-title">Assign Agents</h2>
+          <span class="task-board-subtitle" id="rbac-agent-picker-subtitle">Select agents this user is authorized to manage and converse with</span>
+        </div>
+      </div>
+      <div class="task-board-head-actions">
+        <button class="btn icon ghost" id="btn-agent-picker-close">${ICON.close}</button>
+      </div>
+    </div>
+    <div style="padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.08);">
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <input type="text" id="rbac-agent-picker-search" placeholder="Search 60+ agents (e.g. Higgins, Donna, Archie)..." style="flex: 1; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 13px;" />
+        <button class="btn small ghost" id="btn-picker-submind-fleet" title="Select all Submind autonomous agents">Submind Fleet</button>
+        <button class="btn small ghost" id="btn-picker-select-all" title="Grant access to all agents">Select All (*)</button>
+        <button class="btn small ghost" id="btn-picker-clear-all" title="Clear selection">Clear</button>
+      </div>
+      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #94a3b8;">
+        <span id="rbac-agent-picker-count">Selected 0 agents</span>
+        <span style="opacity: 0.7;">Dynamic fleet across Submind &amp; harness threads</span>
+      </div>
+    </div>
+    <div id="rbac-agent-picker-list" style="padding: 16px 20px; max-height: 360px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px;">
+    </div>
+    <div style="padding: 14px 20px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: flex-end; gap: 10px; background: rgba(15,23,42,0.4);">
+      <button class="btn ghost small" id="btn-picker-cancel">Cancel</button>
+      <button class="btn primary small" id="btn-picker-save">Apply &amp; Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="colony-lockout-screen" style="display: none; position: fixed; inset: 0; z-index: 99999; background: rgba(8, 12, 20, 0.96); backdrop-filter: blur(20px); align-items: center; justify-content: center;"></div>
 
 <div class="help">
   <div class="sheet panel">

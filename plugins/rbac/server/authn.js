@@ -1,3 +1,5 @@
+import { execSync } from 'node:child_process'
+
 /**
  * Authentication (AuthN) Resolver.
  * Extracts and normalizes the authenticated user identity from the incoming request.
@@ -8,6 +10,7 @@ export function resolveAuthUser(req) {
   if (cfEmail && typeof cfEmail === 'string' && cfEmail.trim().length > 0) {
     const email = cfEmail.trim().toLowerCase()
     return {
+      authenticated: true,
       id: email,
       email,
       name: email.split('@')[0],
@@ -25,6 +28,7 @@ export function resolveAuthUser(req) {
         if (payload.email) {
           const email = payload.email.trim().toLowerCase()
           return {
+            authenticated: true,
             id: email,
             email,
             name: email.split('@')[0],
@@ -38,10 +42,11 @@ export function resolveAuthUser(req) {
   }
 
   // 2. Generic Reverse Proxy / OAuth / SAML headers
-  const proxyEmail = req.headers['x-forwarded-email'] || req.headers['x-user-email']
+  const proxyEmail = req.headers['x-forwarded-email'] || req.headers['x-user-email'] || req.headers['x-auth-request-email']
   if (proxyEmail && typeof proxyEmail === 'string' && proxyEmail.trim().length > 0) {
     const email = proxyEmail.trim().toLowerCase()
     return {
+      authenticated: true,
       id: email,
       email,
       name: email.split('@')[0],
@@ -55,6 +60,7 @@ export function resolveAuthUser(req) {
   if (queryUser) {
     const email = queryUser.trim().toLowerCase()
     return {
+      authenticated: true,
       id: email,
       email,
       name: email.split('@')[0],
@@ -62,10 +68,11 @@ export function resolveAuthUser(req) {
     }
   }
 
-  const envUser = process.env.COLONY_DEV_USER || process.env.RBAC_DEV_USER
+  const envUser = process.env.COLONY_ADMIN_EMAIL || process.env.COLONY_DEV_USER || process.env.RBAC_DEV_USER
   if (envUser) {
     const email = envUser.trim().toLowerCase()
     return {
+      authenticated: true,
       id: email,
       email,
       name: email.split('@')[0],
@@ -73,11 +80,31 @@ export function resolveAuthUser(req) {
     }
   }
 
-  // 4. Default local guest / admin
+  // 4. Local machine fallback: Check local git user email if running locally
+  const host = req.headers.host || ''
+  const isLocal = host.includes('localhost') || host.includes('127.0.0.1') || host.includes('::1')
+  if (isLocal) {
+    try {
+      const gitEmail = execSync('git config user.email', { encoding: 'utf-8', timeout: 1000 }).trim().toLowerCase()
+      if (gitEmail && gitEmail.includes('@')) {
+        return {
+          authenticated: true,
+          id: gitEmail,
+          email: gitEmail,
+          name: gitEmail.split('@')[0],
+          provider: 'local-git'
+        }
+      }
+    } catch {}
+  }
+
+  // 5. Unauthenticated visitor
   return {
-    id: 'local-admin@colony.internal',
-    email: 'local-admin@colony.internal',
-    name: 'Local Admin',
-    provider: 'local'
+    authenticated: false,
+    id: null,
+    email: null,
+    name: 'Anonymous',
+    provider: null,
+    reason: 'no_identity_provider'
   }
 }

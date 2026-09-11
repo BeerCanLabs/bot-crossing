@@ -4,6 +4,7 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
+import { scanThreads } from './scan.mjs'
 
 const execAsync = promisify(exec)
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -113,6 +114,25 @@ export class PluginManager {
     return null
   }
 
+  createPluginMiddleware(id, mod) {
+    if (mod.createRbacMiddleware) {
+      return mod.createRbacMiddleware({
+        dataDir: DATA_DIR,
+        getAgents: async () => {
+          try {
+            return await scanThreads()
+          } catch {
+            return []
+          }
+        }
+      })
+    }
+    if (mod.createTaskBoardMiddleware) {
+      return mod.createTaskBoardMiddleware()
+    }
+    return null
+  }
+
   async init() {
     for (const [id, meta] of Object.entries(this.state.installed)) {
       if (!meta.enabled) continue
@@ -122,9 +142,7 @@ export class PluginManager {
           this.loadedPlugins.set(id, {
             meta,
             mod,
-            middleware: mod.createRbacMiddleware 
-              ? mod.createRbacMiddleware({ dataDir: DATA_DIR })
-              : (mod.createTaskBoardMiddleware ? mod.createTaskBoardMiddleware() : null)
+            middleware: this.createPluginMiddleware(id, mod)
           })
           console.log(`[PluginManager] Loaded plugin '${id}' (${meta.name})`)
         }
@@ -166,9 +184,7 @@ export class PluginManager {
         this.loadedPlugins.set(id, {
           meta: this.state.installed[id],
           mod,
-          middleware: mod.createRbacMiddleware 
-            ? mod.createRbacMiddleware({ dataDir: DATA_DIR })
-            : (mod.createTaskBoardMiddleware ? mod.createTaskBoardMiddleware() : null)
+          middleware: this.createPluginMiddleware(id, mod)
         })
       }
     } else {

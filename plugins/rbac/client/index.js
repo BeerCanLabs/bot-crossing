@@ -1,6 +1,8 @@
 /**
  * Bot Crossing RBAC Client Adapter
  */
+const normAgent = (a) => (a || '').toLowerCase().replace(/^sm-/, '').replace(/^submind:/, '').trim()
+
 ;(async function initColonyRbac() {
   try {
     const res = await fetch('/api/rbac/me')
@@ -10,11 +12,14 @@
     window.colonyRbac = {
       ...me,
       canChatWith(agentName) {
-        if (me.role === 'admin') return true
+        if (me.isAdmin || me.role === 'admin') return true
         if (me.role === 'agent_manager') {
-          return (me.allowedAgents || []).includes('*') || (me.allowedAgents || []).includes(agentName)
+          const list = me.allowedAgents || []
+          if (list.includes('*')) return true
+          const target = normAgent(agentName)
+          return list.some((allowed) => normAgent(allowed) === target)
         }
-        return false // Spectator
+        return false // Spectator or unauthorized
       }
     }
 
@@ -28,7 +33,7 @@
         top: 14px;
         right: 140px;
         background: rgba(14, 18, 25, 0.88);
-        border: 1px solid ${me.role === 'admin' ? '#00e5ff' : me.role === 'agent_manager' ? '#ffd166' : '#8892b0'};
+        border: 1px solid ${me.role === 'admin' ? '#00e5ff' : me.role === 'agent_manager' ? '#ffd166' : me.role === 'spectator' ? '#8892b0' : '#ef4444'};
         color: #e2e8f0;
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         font-size: 11px;
@@ -47,7 +52,8 @@
       const roleColors = {
         admin: '#00e5ff',
         agent_manager: '#ffd166',
-        spectator: '#a0aec0'
+        spectator: '#a0aec0',
+        unauthorized: '#ef4444'
       }
 
       badge.innerHTML = `

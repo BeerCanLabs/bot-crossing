@@ -342,18 +342,24 @@ window.addEventListener('resize', () => hud.setSideWidth(sideWidth()))
     const res = await fetch('/api/rbac/me')
     if (res.ok) {
       const data = await res.json()
+      const normAgent = (a) => (a || '').toLowerCase().replace(/^sm-/, '').replace(/^submind:/, '').trim()
       window.colonyRbac = {
         ...data,
         canChatWith(agentName) {
           if (data.isAdmin || data.role === 'admin') return true
           if (data.role === 'agent_manager') {
             const list = data.allowedAgents || []
-            return list.includes('*') || list.includes(agentName)
+            if (list.includes('*')) return true
+            const target = normAgent(agentName)
+            return list.some((allowed) => normAgent(allowed) === target)
           }
-          return false // Spectator
+          return false // Spectator or unauthorized
         }
       }
       hud.setAuthBadge(data)
+      if (data.role === 'unauthorized') {
+        hud.showLockoutScreen(data)
+      }
     }
   } catch {}
 })()
