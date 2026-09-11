@@ -14,6 +14,14 @@ import {
 } from './scan.mjs'
 import { chatWithSubmindAgent } from './harnesses/submind.mjs'
 
+let taskBoardMiddleware = null
+try {
+  const { createTaskBoardMiddleware } = await import('@beercanlabs/bot-crossing-taskboard')
+  taskBoardMiddleware = createTaskBoardMiddleware()
+} catch {
+  // plugin optional
+}
+
 const here = path.dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = process.env.BOT_CROSSING_DATA || path.join(here, '..', 'data')
 const STATE_FILE = path.join(DATA_DIR, 'colony.json')
@@ -386,6 +394,10 @@ export async function apiMiddleware(req, res, next) {
     return send(res, 403, { error: 'Bot Crossing only answers its own page on this machine' })
   }
 
+  if (url.pathname.startsWith('/api/taskboard') && taskBoardMiddleware) {
+    return taskBoardMiddleware(req, res, next)
+  }
+
   try {
     if (url.pathname === '/api/threads' && req.method === 'GET') {
       const threads = await reconcileArchived(await scanThreads())
@@ -395,11 +407,31 @@ export async function apiMiddleware(req, res, next) {
       return send(res, 200, { threads, scannedAt: Date.now(), warnings })
     }
 
-    if ((url.pathname === '/api/tasks' || url.pathname === '/api/taskboard') && req.method === 'GET') {
+    if (url.pathname === '/api/tasks' && req.method === 'GET') {
       const threads = await reconcileArchived(await scanThreads())
       const cronjobs = await scanCronJobs()
-      const tasks = threads
-        .filter((t) => t.running || t.unread || t.hasError || t.ref?.issueNumber || (Date.now() - t.lastActivityAt < 24 * 60 * 60 * 1000 && !t.archived))
+
+      // 1. Query external task provider if configured (GitHub, Notion, Jira, Linear, Paperclip, Local Files)
+      let externalTasks = []
+      let providerName = 'Default'
+      try {
+        const { loadTaskConfig, getProvider } = await import('@beercanlabs/bot-crossing-taskboard')
+        const config = await loadTaskConfig()
+        const activeId = config.active || 'github'
+        const provider = getProvider(activeId)
+        if (provider) {
+          providerName = provider.name
+          const providerConfig = config.providers?.[activeId] || {}
+          const colonyRepos = [...new Set(threads.map((t) => t.ref?.repo || t.project).filter(Boolean))]
+          externalTasks = await provider.fetchTasks(providerConfig, { repos: colonyRepos })
+        }
+      } catch {
+        // Fallback gracefully
+      }
+
+      // 2. Only include agent threads that are genuinely in-flight on an active task/turn
+      const threadTasks = threads
+        .filter((t) => t.running || t.unread || t.hasError || t.ref?.issueNumber)
         .map((t) => ({
           id: t.id,
           title: t.title,
@@ -416,9 +448,17 @@ export async function apiMiddleware(req, res, next) {
           agent: t.ref?.agent || t.harness,
           url: t.ref?.url || '',
           issueNumber: t.ref?.issueNumber || null,
+          source: t.harness,
+          sourceName: t.harnessName,
           ref: t.ref,
         }))
-      return send(res, 200, { tasks, cronjobs, scannedAt: Date.now() })
+
+      return send(res, 200, {
+        tasks: [...externalTasks, ...threadTasks],
+        cronjobs,
+        providerName,
+        scannedAt: Date.now(),
+      })
     }
 
     if (url.pathname === '/api/harnesses' && req.method === 'GET') {

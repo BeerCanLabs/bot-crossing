@@ -376,10 +376,15 @@ export class Hud {
 
     on('#tab-tasks-btn', 'click', () => this.switchTaskBoardTab('tasks'))
     on('#tab-cron-btn', 'click', () => this.switchTaskBoardTab('cron'))
+    on('#tab-config-btn', 'click', () => this.switchTaskBoardTab('config'))
 
     const tbTaskList = this.$('#task-board-task-list')
     if (tbTaskList) {
       tbTaskList.addEventListener('click', (e) => {
+        if (e.target.closest('#btn-empty-configure')) {
+          this.switchTaskBoardTab('config')
+          return
+        }
         const btn = e.target.closest('button[data-action]')
         if (!btn) return
         const action = btn.dataset.action
@@ -903,21 +908,24 @@ export class Hud {
     this.activeTaskBoardTab = tab
     const tabTasksBtn = this.$('#tab-tasks-btn')
     const tabCronBtn = this.$('#tab-cron-btn')
+    const tabConfigBtn = this.$('#tab-config-btn')
     const paneTasks = this.$('#pane-tasks')
     const paneCron = this.$('#pane-cron')
+    const paneConfig = this.$('#pane-config')
 
-    if (tab === 'tasks') {
-      tabTasksBtn?.classList.add('active')
-      tabCronBtn?.classList.remove('active')
-      if (paneTasks) paneTasks.style.display = 'block'
-      if (paneCron) paneCron.style.display = 'none'
+    tabTasksBtn?.classList.toggle('active', tab === 'tasks')
+    tabCronBtn?.classList.toggle('active', tab === 'cron')
+    tabConfigBtn?.classList.toggle('active', tab === 'config')
+
+    if (paneTasks) paneTasks.style.display = tab === 'tasks' ? 'block' : 'none'
+    if (paneCron) paneCron.style.display = tab === 'cron' ? 'block' : 'none'
+    if (paneConfig) paneConfig.style.display = tab === 'config' ? 'block' : 'none'
+
+    if (tab === 'config') {
+      this.renderTaskBoardConfig()
     } else {
-      tabCronBtn?.classList.add('active')
-      tabTasksBtn?.classList.remove('active')
-      if (paneCron) paneCron.style.display = 'block'
-      if (paneTasks) paneTasks.style.display = 'none'
+      this.renderTaskBoard()
     }
-    this.renderTaskBoard()
   }
 
   updateTaskBoard(data) {
@@ -936,6 +944,138 @@ export class Hud {
     }
   }
 
+  async renderTaskBoardConfig() {
+    const configPane = this.$('#task-board-config-list')
+    if (!configPane) return
+
+    configPane.innerHTML = `<div style="padding: 24px; color: #94a3b8;">Loading provider configuration...</div>`
+    try {
+      const res = await fetch('/api/taskboard/config')
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const { config, providers } = await res.json()
+      const activeId = config?.active || 'github'
+      const savedProviders = config?.providers || {}
+
+      configPane.innerHTML = `
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px 0; display: flex; flex-direction: column; gap: 18px;">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 13px; font-weight: 600; color: #cbd5e1;">Select Task Provider</label>
+            <select id="cfg-provider-select" style="background: #0f172a; border: 1px solid rgba(80,200,255,0.3); color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 13px;">
+              ${providers.map((p) => `<option value="${p.id}" ${p.id === activeId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div id="cfg-provider-desc" style="font-size: 13px; color: #94a3b8;"></div>
+          <div id="cfg-fields-container" style="display: flex; flex-direction: column; gap: 14px;"></div>
+          <div style="display: flex; align-items: center; gap: 12px; margin-top: 8px;">
+            <button type="button" class="btn small" id="btn-cfg-test">Test Connection</button>
+            <button type="button" class="btn primary small" id="btn-cfg-save">Save Settings</button>
+            <span id="cfg-status-msg" style="font-size: 13px;"></span>
+          </div>
+        </div>
+      `
+
+      const select = configPane.querySelector('#cfg-provider-select')
+      const descEl = configPane.querySelector('#cfg-provider-desc')
+      const fieldsContainer = configPane.querySelector('#cfg-fields-container')
+      const testBtn = configPane.querySelector('#btn-cfg-test')
+      const saveBtn = configPane.querySelector('#btn-cfg-save')
+      const statusMsg = configPane.querySelector('#cfg-status-msg')
+
+      const renderFields = () => {
+        const curId = select.value
+        const provider = providers.find((p) => p.id === curId)
+        if (!provider) return
+        descEl.textContent = provider.description || ''
+        const currentVals = savedProviders[curId] || {}
+        fieldsContainer.innerHTML = (provider.fields || []).map((f) => `
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 13px; font-weight: 500; color: #cbd5e1;">
+              ${escapeHtml(f.label)} ${f.required ? '<span style="color:#ef4444">*</span>' : ''}
+            </label>
+            <input
+              id="cfg-field-${f.key}"
+              data-key="${f.key}"
+              type="${f.type || 'text'}"
+              placeholder="${escapeHtml(f.placeholder || '')}"
+              value="${escapeHtml(currentVals[f.key] || '')}"
+              style="background: #0f172a; border: 1px solid rgba(80,200,255,0.25); color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 13px;"
+            />
+          </div>
+        `).join('')
+      }
+
+      select.addEventListener('change', renderFields)
+      renderFields()
+
+      const getInputs = () => {
+        const vals = {}
+        fieldsContainer.querySelectorAll('input').forEach((i) => {
+          vals[i.dataset.key] = i.value
+        })
+        return vals
+      }
+
+      testBtn.addEventListener('click', async () => {
+        statusMsg.style.color = '#94a3b8'
+        statusMsg.textContent = 'Testing...'
+        try {
+          const res = await fetch('/api/taskboard/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ providerId: select.value, config: getInputs() }),
+          })
+          const data = await res.json()
+          if (data.ok) {
+            statusMsg.style.color = '#4ade80'
+            statusMsg.textContent = `✓ Connected${data.user ? ` (${data.user})` : ''}!`
+          } else {
+            statusMsg.style.color = '#f87171'
+            statusMsg.textContent = `✕ Failed: ${data.error}`
+          }
+        } catch (err) {
+          statusMsg.style.color = '#f87171'
+          statusMsg.textContent = `✕ ${err.message}`
+        }
+      })
+
+      saveBtn.addEventListener('click', async () => {
+        statusMsg.style.color = '#94a3b8'
+        statusMsg.textContent = 'Saving...'
+        const updatedConfig = {
+          active: select.value,
+          providers: {
+            ...savedProviders,
+            [select.value]: getInputs(),
+          },
+        }
+        try {
+          const res = await fetch('/api/taskboard/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatedConfig),
+          })
+          if (res.ok) {
+            statusMsg.style.color = '#4ade80'
+            statusMsg.textContent = '✓ Saved!'
+            this.toast('Task provider settings saved!')
+            const tasksRes = await fetch('/api/tasks').then((r) => r.json()).catch(() => null)
+            if (tasksRes) {
+              this.updateTaskBoard(tasksRes)
+            }
+          } else {
+            statusMsg.style.color = '#f87171'
+            statusMsg.textContent = '✕ Save failed'
+          }
+        } catch (err) {
+          statusMsg.style.color = '#f87171'
+          statusMsg.textContent = `✕ ${err.message}`
+        }
+      })
+    } catch (err) {
+      configPane.innerHTML = `<div style="padding: 24px; color: #f87171;">Failed to load config: ${escapeHtml(err.message)}</div>`
+    }
+  }
+
   renderTaskBoard() {
     const taskListEl = this.$('#task-board-task-list')
     const cronListEl = this.$('#task-board-cron-list')
@@ -943,11 +1083,13 @@ export class Hud {
     if (this.activeTaskBoardTab === 'tasks' && taskListEl) {
       const tasks = this.taskBoardData.tasks || []
       if (tasks.length === 0) {
+        const providerName = this.taskBoardData.providerName || 'your configured task provider'
         taskListEl.innerHTML = `
           <div class="task-board-empty">
             <div class="empty-glyph">✓</div>
             <h3>All systems nominal</h3>
-            <p>No agent tasks currently in flight. The crew is standing by at their plots.</p>
+            <p>No active tasks in ${escapeHtml(providerName)}. The crew is standing by at their plots.</p>
+            <button type="button" class="btn primary small" id="btn-empty-configure" style="margin-top: 14px;">Configure Task Provider ⚙️</button>
           </div>
         `
       } else {
@@ -1510,6 +1652,9 @@ const TEMPLATE = `
         <span>Cronjobs Across All Agents</span>
         <span class="tab-count" id="cron-count-badge">0</span>
       </button>
+      <button class="task-tab" data-tab="config" id="tab-config-btn">
+        <span>Configure ⚙️</span>
+      </button>
     </div>
 
     <div class="task-board-content">
@@ -1518,6 +1663,9 @@ const TEMPLATE = `
       </div>
       <div class="task-tab-pane" id="pane-cron" style="display: none;">
         <div class="cron-list" id="task-board-cron-list"></div>
+      </div>
+      <div class="task-tab-pane" id="pane-config" style="display: none;">
+        <div class="config-list" id="task-board-config-list"></div>
       </div>
     </div>
   </div>
