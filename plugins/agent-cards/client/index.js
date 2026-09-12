@@ -1,11 +1,12 @@
 /**
  * Custom Agent Cards Plugin for Bot Crossing
  *
- * Provides enhanced astronaut cards with:
- * - Direct Talk / Chat trigger (opens native Bot Crossing chat drawer)
- * - Agent-specific scheduled cron routines with manual 'Run Now' triggers
- * - Direct link to the agent's backlog and task board
- * - Interactive 'Add Task' dispatcher to inject tasks into the agent's backlog
+ * Fully provider-agnostic, customizable astronaut cards:
+ * - Dynamic task provider backlog linking (Notion, GitHub, Linear, Jira) via /api/agent-cards/config
+ * - Contextual Talk / Chat action (shown only for conversational harnesses)
+ * - Agent-specific scheduled routines inspection & execution (shown when routines exist)
+ * - Contextual CLI resume command pill (shown only when thread has a CLI command)
+ * - Universal task dispatcher creating tasks in the active task provider
  */
 
 ;(function initCustomAgentCards() {
@@ -17,30 +18,39 @@
   const escapeHtml = (s) => (s ? String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') : '')
   const hex = (n) => `#${(n ?? 0).toString(16).padStart(6, '0')}`
 
-  const AGENT_REPOS = {
-    higgins: 'BeerCanLabs/SM-higgins',
-    donna: 'BeerCanLabs/SM-donna',
-    castle: 'BeerCanLabs/SM-castle',
-    archie: 'BeerCanLabs/SM-archie',
-    switch: 'BeerCanLabs/SM-switch',
-    geordi: 'BeerCanLabs/SM-geordi',
-    draftsman: 'BeerCanLabs/ev-draftsman',
-    'alc-support': 'dsackr/american-lutheran-church-kellogg',
+  // Fetch active provider & features configuration from server dynamically
+  let cardConfig = {
+    provider: 'default',
+    providerName: 'Backlog',
+    backlogUrl: '',
+    features: { chat: true, cron: true, tasks: true, cli: true }
   }
+
+  fetch('/api/agent-cards/config')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      if (data) cardConfig = { ...cardConfig, ...data }
+    })
+    .catch(() => {})
 
   window.botCrossing.on('card:render', ({ agent, thread, card, hud }) => {
     if (!agent || !thread || !card) return false
 
     const rawAgent = (thread.ref?.agent || thread.id.replace(/^submind:/, '').replace(/^grok:/, '').replace(/^claude-code:/, '')).toLowerCase().replace(/^sm-/, '').trim()
-    const targetRepo = thread.ref?.repo || AGENT_REPOS[rawAgent] || `BeerCanLabs/SM-${rawAgent}`
-    const backlogUrl = thread.ref?.url ? (thread.ref.url.includes('/issues/') ? thread.ref.url : `${thread.ref.url}/issues`) : `https://github.com/${targetRepo}/issues`
+    const backlogUrl = thread.ref?.url || cardConfig.backlogUrl || '#'
+    const providerName = cardConfig.providerName || 'Backlog'
     const title = thread.title || `${rawAgent.toUpperCase()} — Autonomous Agent`
     const swatchColor = hex(agent.trim?.getHex ? agent.trim.getHex() : 0x00e5ff)
+
+    const canChat = thread.harness === 'submind' || thread.canChat === true || (window.colonyRbac ? window.colonyRbac.canChatWith(rawAgent) : true)
+    const hasCli = Boolean(thread.cliCommand)
 
     card.style.background = 'transparent'
     card.style.border = 'none'
     card.style.boxShadow = 'none'
     card.style.padding = '0'
+
+    const actionCols = [canChat, true, hasCli].filter(Boolean).length
 
     card.innerHTML = `
       <div style="padding: 14px 16px; background: rgba(14, 18, 25, 0.96); border: 1px solid rgba(255,255,255,0.14); border-radius: 12px; box-shadow: 0 16px 40px rgba(0,0,0,0.65), 0 0 24px rgba(0,229,255,0.12); width: 340px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; box-sizing: border-box;">
@@ -80,16 +90,20 @@
         ` : ''}
 
         <!-- Primary Action Buttons -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 12px;">
-          <button class="btn small primary" id="btn-card-talk" style="font-size: 11px; padding: 6px 4px; justify-content: center; gap: 4px;">
-            <span>💬</span> Talk
-          </button>
-          <a href="${escapeHtml(backlogUrl)}" target="_blank" rel="noopener noreferrer" class="btn small ghost" style="font-size: 11px; padding: 6px 4px; justify-content: center; text-decoration: none; text-align: center; gap: 4px;">
-            <span>📋</span> Backlog
+        <div style="display: grid; grid-template-columns: repeat(${actionCols}, 1fr); gap: 6px; margin-bottom: 12px;">
+          ${canChat ? `
+            <button class="btn small primary" id="btn-card-talk" style="font-size: 11px; padding: 6px 4px; justify-content: center; gap: 4px;">
+              <span>💬</span> Talk
+            </button>
+          ` : ''}
+          <a href="${escapeHtml(backlogUrl)}" target="_blank" rel="noopener noreferrer" class="btn small ghost" style="font-size: 11px; padding: 6px 4px; justify-content: center; text-decoration: none; text-align: center; gap: 4px;" title="Open ${escapeHtml(rawAgent)}'s ${escapeHtml(providerName)} Backlog">
+            <span>📋</span> ${escapeHtml(providerName)}
           </a>
-          <button class="btn small ghost" id="btn-card-cli" title="Copy CLI resume command" style="font-size: 11px; padding: 6px 4px; justify-content: center; gap: 4px;">
-            <span>💻</span> CLI
-          </button>
+          ${hasCli ? `
+            <button class="btn small ghost" id="btn-card-cli" title="Copy CLI resume command" style="font-size: 11px; padding: 6px 4px; justify-content: center; gap: 4px;">
+              <span>💻</span> CLI
+            </button>
+          ` : ''}
         </div>
 
         <!-- Scheduled Routines (Cron) Section -->
@@ -109,7 +123,7 @@
             <button class="btn small ghost" id="btn-toggle-add-task" style="font-size: 10px; padding: 2px 8px;">+ New Task</button>
           </div>
           <div id="add-task-form" style="display: none; margin-top: 8px; flex-direction: column; gap: 6px;">
-            <input type="text" id="input-task-title" placeholder="Describe task for ${rawAgent}..." style="background: #0f172a; border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 5px 8px; border-radius: 4px; font-size: 11px;" />
+            <input type="text" id="input-task-title" placeholder="Describe task for ${rawAgent} (${providerName})..." style="background: #0f172a; border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 5px 8px; border-radius: 4px; font-size: 11px;" />
             <div style="display: flex; justify-content: flex-end; gap: 6px;">
               <button class="btn small ghost" id="btn-cancel-add-task" style="font-size: 10px; padding: 3px 8px;">Cancel</button>
               <button class="btn small primary" id="btn-submit-add-task" style="font-size: 10px; padding: 3px 8px;">Dispatch</button>
@@ -135,10 +149,10 @@
 
     // Wire Copy CLI Button
     card.querySelector('#btn-card-cli')?.addEventListener('click', async () => {
-      const cmd = thread.cliCommand || `gcloud run services describe sm-${rawAgent} --region=us-central1 --project=submind-matrix`
+      if (!thread.cliCommand) return
       try {
-        await navigator.clipboard.writeText(cmd)
-        hud.toast(`Copied CLI command: ${cmd}`)
+        await navigator.clipboard.writeText(thread.cliCommand)
+        hud.toast(`Copied CLI command: ${thread.cliCommand}`)
       } catch {
         hud.toast('Failed to copy to clipboard', 'err')
       }
@@ -175,7 +189,7 @@
         })
         const data = await res.json()
         if (res.ok) {
-          hud.toast(`Task dispatched to ${rawAgent.toUpperCase()}'s backlog!`, 'ok')
+          hud.toast(data.message || `Task dispatched to ${rawAgent.toUpperCase()}'s backlog!`, 'ok')
           addForm.style.display = 'none'
           if (inputTitle) inputTitle.value = ''
         } else {
@@ -203,7 +217,7 @@
         if (indicator) indicator.textContent = `${jobs.length} scheduled`
 
         if (jobs.length === 0) {
-          listEl.innerHTML = `<div style="font-size: 11px; color: #64748b; font-style: italic;">No automated cron routines scheduled.</div>`
+          listEl.innerHTML = `<div style="font-size: 11px; color: #64748b; font-style: italic;">No scheduled routines for this agent.</div>`
           return
         }
 

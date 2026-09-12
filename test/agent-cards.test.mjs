@@ -42,6 +42,17 @@ test('Agent Cards: serves plugin client script directly over /plugins/agent-card
   assert.ok(body.includes('btn-card-talk'), 'Expected script to contain talk button')
 }))
 
+test('Agent Cards: returns provider configuration on /api/agent-cards/config', withServer(async (base) => {
+  const res = await fetch(`${base}/api/agent-cards/config`, {
+    headers: { Origin: base }
+  })
+  assert.equal(res.status, 200)
+  const data = await res.json()
+  assert.ok(data.provider)
+  assert.ok(data.providerName)
+  assert.ok(data.features)
+}))
+
 test('Agent Cards: queries agent-specific cron routines on /api/agent-cards/cron', withServer(async (base) => {
   const res = await fetch(`${base}/api/agent-cards/cron?agent=higgins`, {
     headers: { Origin: base }
@@ -75,7 +86,7 @@ test('Agent Cards: triggers manual cron execution on /api/agent-cards/cron/run',
   assert.equal(data.jobId, 'submind-higgins-morning-daily-25-briefing')
 }))
 
-test('Agent Cards: creates task on /api/agent-cards/tasks/create', withServer(async (base) => {
+test('Agent Cards: creates task on /api/agent-cards/tasks/create via active provider', withServer(async (base) => {
   const res = await fetch(`${base}/api/agent-cards/tasks/create`, {
     method: 'POST',
     headers: {
@@ -91,6 +102,7 @@ test('Agent Cards: creates task on /api/agent-cards/tasks/create', withServer(as
   const data = await res.json()
   assert.equal(data.ok, true)
   assert.equal(data.agent, 'higgins')
-  assert.equal(data.repo, 'BeerCanLabs/SM-higgins')
+  assert.ok(data.provider)
+  assert.ok(data.providerName)
   assert.ok(data.url)
 }))
