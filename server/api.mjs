@@ -402,6 +402,24 @@ export async function apiMiddleware(req, res, next) {
       res.writeHead(200, { 'Content-Type': type, 'Content-Length': content.length, 'Cache-Control': 'no-cache' })
       return res.end(content)
     }
+
+    // Dynamic Remote Fallback: Stream directly from GitHub BeerCanLabs/bot-crossing-plugins
+    try {
+      const remoteUrl = `https://raw.githubusercontent.com/BeerCanLabs/bot-crossing-plugins/main/packages/${rel}`
+      const remoteRes = await fetch(remoteUrl)
+      if (remoteRes.ok) {
+        const ext = path.extname(rel)
+        const type = ext === '.js' || ext === '.mjs' ? 'text/javascript; charset=utf-8' :
+                     ext === '.css' ? 'text/css; charset=utf-8' :
+                     ext === '.json' ? 'application/json; charset=utf-8' : 'application/octet-stream'
+        const buf = Buffer.from(await remoteRes.arrayBuffer())
+        res.writeHead(200, { 'Content-Type': type, 'Content-Length': buf.length, 'Cache-Control': 'public, max-age=300' })
+        return res.end(buf)
+      }
+    } catch (err) {
+      console.warn(`[Plugins] Remote asset fetch error for ${rel}:`, err.message)
+    }
+
     return send(res, 404, { error: 'Plugin asset not found' })
   }
 
@@ -420,7 +438,7 @@ export async function apiMiddleware(req, res, next) {
 
   try {
     if (url.pathname === '/api/plugins' && req.method === 'GET') {
-      return send(res, 200, pluginManager.getStatus())
+      return send(res, 200, await pluginManager.getStatus())
     }
 
     if (url.pathname === '/api/plugins/client-scripts' && req.method === 'GET') {

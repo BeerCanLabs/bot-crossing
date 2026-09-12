@@ -38,7 +38,15 @@ test('PluginManager reports installed plugins and official catalog', async () =>
     assert.ok(data.installed.billboard, 'Billboard plugin must be installed')
     assert.ok(data.installed.rbac, 'RBAC plugin must be installed')
     assert.ok(Array.isArray(data.catalog), 'Catalog must be an array')
-    assert.ok(data.catalog.length >= 2, 'Catalog must contain at least billboard and rbac')
+    assert.ok(data.catalog.length >= 3, 'Catalog must contain plugins')
+    assert.ok(data.catalog.some(c => c.id === 'music'), 'Dynamic catalog must discover music plugin')
+
+    // Verify dynamic plugin asset streaming
+    const musicScript = await fetch(`${base}/plugins/music/client/index.js`, {
+      headers: { Origin: base }
+    })
+    assert.equal(musicScript.status, 200)
+    assert.match(musicScript.headers.get('content-type'), /javascript/)
   })
 })
 
