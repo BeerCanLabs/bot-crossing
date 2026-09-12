@@ -143,11 +143,45 @@ function getStorage() {
 }
 
 /**
- * Fetch open issues across relevant BeerCanLabs repos to identify active agent assignments.
+ * Fetch open issues across relevant BeerCanLabs repos or active Notion tasks to identify active agent assignments.
  */
 async function fetchActiveTasks() {
+  const tasksByAgent = new Map()
+
+  // 1. If Notion is configured as the active task provider, query Notion tasks first
+  const activeProvider = process.env.TASK_PROVIDER || (process.env.NOTION_API_KEY ? 'notion' : 'github')
+  if (activeProvider === 'notion' && (process.env.NOTION_API_KEY || process.env.NOTION_TOKEN)) {
+    try {
+      const notionMod = await import('../../plugins/billboard/server/providers/notion.js')
+      const notionProvider = notionMod.default || notionMod
+      const tasks = await notionProvider.fetchTasks()
+      for (const t of tasks) {
+        if (t.status === 'in_progress' || t.status === 'pending') {
+          const text = `${t.title} ${t.assignee || ''}`.toLowerCase()
+          const targetAgent = ['higgins', 'switch', 'donna', 'castle', 'archie', 'geordi', 'draftsman'].find((a) =>
+            text.includes(a)
+          )
+          if (targetAgent && !tasksByAgent.has(targetAgent)) {
+            tasksByAgent.set(targetAgent, {
+              title: t.title,
+              body: t.preview || '',
+              url: t.url,
+              source: 'notion',
+              projectName: 'Notion',
+              updatedAt: t.updatedAt || Date.now(),
+            })
+          }
+        }
+      }
+      if (tasksByAgent.size > 0) return tasksByAgent
+    } catch (err) {
+      console.warn('[submind] Failed to fetch active Notion tasks:', err.message)
+    }
+  }
+
+  // 2. Otherwise query GitHub issues across fleet repos
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || ''
-  if (!token) return new Map()
+  if (!token) return tasksByAgent
 
   const repos = [
     'BeerCanLabs/closing-climb',
@@ -166,8 +200,6 @@ async function fetchActiveTasks() {
     'dsackr/wereadthebible-com',
     'dsackr/american-lutheran-church-kellogg',
   ]
-
-  const tasksByAgent = new Map()
 
   for (const repo of repos) {
     try {
@@ -353,7 +385,9 @@ async function scanThreads() {
     let title = profile.title
     let preview = profile.role
     if (activeTask) {
-      title = `${rawName.toUpperCase()} — Working on #${activeTask.issueNumber}: ${activeTask.title}`
+      title = activeTask.source === 'notion'
+        ? `${rawName.toUpperCase()} — Working on: ${activeTask.title}`
+        : `${rawName.toUpperCase()} — Working on #${activeTask.issueNumber}: ${activeTask.title}`
       preview = activeTask.body.slice(0, 240)
     } else if (isCastleChatActive) {
       title = `CASTLE — Generating Content`
@@ -387,10 +421,13 @@ async function scanThreads() {
       sizeBytes: Math.max(totalBytes, 4096),
       source: 'gcp-submind',
       canOpen: true,
+      taskUrl: activeTask ? activeTask.url : undefined,
+      taskProvider: activeTask ? activeTask.source : undefined,
       ref: {
         agent: rawName,
         bucket: bucket.name,
-        repo: activeTask ? activeTask.repo : profile.repo,
+        repo: activeTask?.repo || profile.repo,
+        repoUrl: `https://github.com/${profile.repo}`,
         url: activeTask ? activeTask.url : `https://github.com/${profile.repo}`,
       },
     })

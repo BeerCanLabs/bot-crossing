@@ -37,8 +37,21 @@
     if (!agent || !thread || !card) return false
 
     const rawAgent = (thread.ref?.agent || thread.id.replace(/^submind:/, '').replace(/^grok:/, '').replace(/^claude-code:/, '')).toLowerCase().replace(/^sm-/, '').trim()
-    const backlogUrl = thread.ref?.url || cardConfig.backlogUrl || '#'
     const providerName = cardConfig.providerName || 'Backlog'
+
+    // Determine the exact backlog URL: ensure provider matches the destination
+    let backlogUrl = cardConfig.backlogUrl || '#'
+    if (cardConfig.provider === 'github') {
+      // If provider is GitHub, an active issue URL or repo issue tracker applies
+      backlogUrl = thread.taskUrl || (thread.ref?.url && thread.ref.url.includes('github.com') ? thread.ref.url : cardConfig.backlogUrl) || 'https://github.com'
+    } else if (thread.taskUrl && (!thread.taskProvider || thread.taskProvider === cardConfig.provider)) {
+      // If agent has an active task from this specific provider (e.g. Notion page), link directly to that task
+      backlogUrl = thread.taskUrl
+    } else if (cardConfig.backlogUrl) {
+      // Otherwise link directly to the provider's backlog board / database (e.g. Notion database)
+      backlogUrl = cardConfig.backlogUrl
+    }
+
     const title = thread.title || `${rawAgent.toUpperCase()} — Autonomous Agent`
     const swatchColor = hex(agent.trim?.getHex ? agent.trim.getHex() : 0x00e5ff)
 
@@ -70,7 +83,7 @@
           <div style="display: flex; align-items: center; gap: 6px;">
             <div style="display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end;">
               ${thread.model ? `<span style="font-size: 9px; font-family: monospace; background: rgba(255,255,255,0.06); color: #cbd5e1; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.08);">${escapeHtml(thread.model)}</span>` : ''}
-              ${thread.project ? `<span style="font-size: 9px; font-family: monospace; background: rgba(56,189,248,0.12); color: #38bdf8; padding: 2px 6px; border-radius: 4px;">${escapeHtml(thread.project)}</span>` : ''}
+              ${thread.project ? `<a href="${escapeHtml(thread.ref?.repoUrl || (thread.ref?.repo ? `https://github.com/${thread.ref.repo}` : 'https://github.com/BeerCanLabs'))}" target="_blank" rel="noopener noreferrer" style="font-size: 9px; font-family: monospace; background: rgba(56,189,248,0.12); color: #38bdf8; padding: 2px 6px; border-radius: 4px; text-decoration: none;" title="Open code repo on GitHub">${escapeHtml(thread.project)} ↗</a>` : ''}
             </div>
             <button id="btn-custom-card-close" style="background: transparent; border: none; color: #94a3b8; cursor: pointer; font-size: 14px; padding: 2px 6px; line-height: 1; border-radius: 4px; margin-left: 4px;" title="Close (Esc)">✕</button>
           </div>

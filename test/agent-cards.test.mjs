@@ -106,3 +106,37 @@ test('Agent Cards: creates task on /api/agent-cards/tasks/create via active prov
   assert.ok(data.providerName)
   assert.ok(data.url)
 }))
+
+test('Agent Cards: returns Notion database backlogUrl when TASK_PROVIDER=notion', async () => {
+  const origProvider = process.env.TASK_PROVIDER
+  const origDb = process.env.NOTION_DATABASE_ID
+  try {
+    process.env.TASK_PROVIDER = 'notion'
+    process.env.NOTION_DATABASE_ID = '3d80a48f-fae0-816b-bc00-e4cba96c85aa'
+    await withServer(async (base) => {
+      const res = await fetch(`${base}/api/agent-cards/config`, {
+        headers: { Origin: base }
+      })
+      assert.equal(res.status, 200)
+      const data = await res.json()
+      assert.equal(data.provider, 'notion')
+      assert.equal(data.providerName, 'Notion')
+      assert.equal(data.backlogUrl, 'https://www.notion.so/3d80a48ffae0816bbc00e4cba96c85aa')
+    })()
+  } finally {
+    process.env.TASK_PROVIDER = origProvider
+    process.env.NOTION_DATABASE_ID = origDb
+  }
+})
+
+test('Agent Cards: client script strictly isolates Notion backlogUrl from GitHub ref URLs', withServer(async (base) => {
+  const res = await fetch(`${base}/plugins/agent-cards/client/index.js`, {
+    headers: { Origin: base }
+  })
+  assert.equal(res.status, 200)
+  const code = await res.text()
+  // Ensure the buggy "thread.ref?.url || cardConfig.backlogUrl" fallback was removed
+  assert.ok(!code.includes('thread.ref?.url || cardConfig.backlogUrl'), 'Buggy fallback thread.ref?.url || cardConfig.backlogUrl must not exist')
+  assert.ok(code.includes("cardConfig.provider === 'github'"), 'Script must branch specifically on github provider')
+  assert.ok(code.includes('backlogUrl = cardConfig.backlogUrl'), 'Script must use cardConfig.backlogUrl for non-github providers')
+}))
